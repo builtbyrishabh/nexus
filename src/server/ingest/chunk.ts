@@ -13,31 +13,16 @@ const TARGET_TOKENS = 250; // 200–300 target (docs/ARCHITECTURE.md canonical s
 const OVERLAP_TOKENS = 40; // ~15% overlap
 
 /**
- * The youtube-transcript library reports offset/duration in milliseconds on its primary
- * (InnerTube) path but seconds on the classic fallback. Normalize to seconds by magnitude:
- * no real video runs past ~24h, so an offset above that must be milliseconds.
- */
-function normalizeToSeconds(segments: Segment[]): Segment[] {
-  const maxStart = segments.reduce((m, s) => Math.max(m, s.startSec ?? 0), 0);
-  const looksLikeMs = maxStart > 86_400;
-  if (!looksLikeMs) return segments;
-  return segments.map((s) => ({
-    text: s.text,
-    startSec: s.startSec === undefined ? undefined : s.startSec / 1000,
-    endSec: s.endSec === undefined ? undefined : s.endSec / 1000,
-  }));
-}
-
-/**
  * Group consecutive transcript segments into ~250-token chunks with ~15% overlap, carrying
  * the timestamp locator through the split (start = first segment, end = last segment). The
  * timestamp is the whole citation premise, so it must survive chunking — this is the one
  * non-trivial part of "naive" Slice 0 chunking.
+ *
+ * Segments arrive already normalized to seconds by their loader; unit correction is a
+ * source-specific concern and lives at that boundary, not here.
  */
 export function chunkSegments(rawSegments: Segment[]): BuiltChunk[] {
-  const segments = normalizeToSeconds(rawSegments).filter(
-    (s) => s.text.trim().length > 0,
-  );
+  const segments = rawSegments.filter((s) => s.text.trim().length > 0);
   if (segments.length === 0) return [];
 
   const chunks: BuiltChunk[] = [];

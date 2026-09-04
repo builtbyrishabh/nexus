@@ -1,68 +1,208 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 
 import { db } from "~/server/db";
 import { chunk, source } from "~/server/db/schema";
 import type { Evidence, Filter } from "~/server/domain/types";
 import { embedQuery } from "~/server/ingest/embed";
+import {
+  mergeNeighborText,
+  neighborCoords,
+  neighborKey,
+} from "~/server/retrieval/neighbors";
+import { rrfFuse } from "~/server/retrieval/rrf";
 
-type Row = {
+// Canonical settings (docs/ARCHITECTURE.md): each retriever returns a top-20 candidate pool;
+// RRF fuses them with k=60. Rerank (→ top-3..5) slots in here later; neighbor radius is ±1.
+const CANDIDATE_K = 20;
+const RRF_K = 60;
+const NEIGHBOR_RADIUS = 1;
+
+type HydratedRow = {
   chunk_id: string;
   source_id: string;
+  chunk_index: number;
   text: string;
   start_sec: number | null;
   end_sec: number | null;
-  score: number;
   title: string;
   url: string;
 };
 
 /**
+ * Public boundary → parameterized only. `Filter` values arrive from callers, so every id/kind
+ * binds as a placeholder (the uuid/enum columns validate them); nothing is ever interpolated
+ * into SQL text. Built once here and shared by both retrievers so the two searches can never
+ * drift out of agreement on what "in scope" means.
+ */
+function filterConditions(filter?: Filter): SQL[] {
+  const conditions: SQL[] = [];
+  const sourceIds = filter?.sourceIds;
+  if (sourceIds && sourceIds.length > 0) {
+    conditions.push(
+      sql`c.source_id IN (${sql.join(
+        sourceIds.map((id) => sql`${id}`),
+        sql`, `,
+      )})`,
+    );
+  }
+  if (filter?.kind) conditions.push(sql`s.kind = ${filter.kind}`);
+  return conditions;
+}
+
+/** `WHERE a AND b AND …`, or empty when there is nothing to constrain. */
+function whereClause(conditions: SQL[]): SQL {
+  return conditions.length > 0
+    ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+    : sql``;
+}
+
+/** Dense retriever: pgvector cosine nearest-neighbors (HNSW). Returns chunk ids, best first. */
+async function denseSearch(qvec: string, conditions: SQL[]): Promise<string[]> {
+  const rows = (await db.execute(sql`
+    SELECT c.id AS id
+    FROM ${chunk} c
+    JOIN ${source} s ON s.id = c.source_id
+    ${whereClause(conditions)}
+    ORDER BY c.embedding <=> ${qvec}::vector
+    LIMIT ${CANDIDATE_K}
+  `)) as unknown as { id: string }[];
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Sparse retriever: Postgres full-text over the generated `tsv` column, ranked by ts_rank_cd
+ * (rewards term proximity + density). `websearch_to_tsquery` parses the raw user query — quoted
+ * phrases, OR, `-negation` — safely, and yields no rows for an empty/stopword-only query, which
+ * RRF then simply treats as a missing list. This is what dense misses: exact names and jargon.
+ */
+async function sparseSearch(query: string, conditions: SQL[]): Promise<string[]> {
+  const rows = (await db.execute(sql`
+    SELECT c.id AS id
+    FROM ${chunk} c
+    JOIN ${source} s ON s.id = c.source_id
+    CROSS JOIN websearch_to_tsquery('english', ${query}) AS q
+    ${whereClause([sql`c.tsv @@ q`, ...conditions])}
+    ORDER BY ts_rank_cd(c.tsv, q) DESC
+    LIMIT ${CANDIDATE_K}
+  `)) as unknown as { id: string }[];
+  return rows.map((r) => r.id);
+}
+
+/** Load full rows for a set of chunk ids, keyed by id so callers can re-impose the fused order. */
+async function hydrate(ids: string[]): Promise<Map<string, HydratedRow>> {
+  if (ids.length === 0) return new Map();
+  const rows = (await db.execute(sql`
+    SELECT
+      c.id AS chunk_id,
+      c.source_id AS source_id,
+      c.chunk_index AS chunk_index,
+      c.text AS text,
+      c.start_sec AS start_sec,
+      c.end_sec AS end_sec,
+      s.title AS title,
+      s.url AS url
+    FROM ${chunk} c
+    JOIN ${source} s ON s.id = c.source_id
+    WHERE c.id IN (${sql.join(
+      ids.map((id) => sql`${id}`),
+      sql`, `,
+    )})
+  `)) as unknown as HydratedRow[];
+
+  return new Map(rows.map((r) => [r.chunk_id, r]));
+}
+
+/** Build an Evidence from a ranked row; `text` is passed in so neighbor expansion can widen it. */
+function toEvidence(row: HydratedRow, score: number, text: string): Evidence {
+  return {
+    chunkId: row.chunk_id,
+    sourceId: row.source_id,
+    text,
+    score,
+    locator:
+      row.start_sec === null
+        ? undefined
+        : { startSec: row.start_sec, endSec: row.end_sec ?? row.start_sec },
+    source: { title: row.title, url: row.url },
+  };
+}
+
+/** Fetch just the text of the given neighbor coordinates, keyed for O(1) lookup. */
+async function fetchNeighborText(
+  coords: { sourceId: string; index: number }[],
+): Promise<Map<string, string>> {
+  if (coords.length === 0) return new Map();
+  const rows = (await db.execute(sql`
+    SELECT c.source_id AS source_id, c.chunk_index AS chunk_index, c.text AS text
+    FROM ${chunk} c
+    WHERE (c.source_id, c.chunk_index) IN (${sql.join(
+      coords.map((co) => sql`(${co.sourceId}::uuid, ${co.index}::int)`),
+      sql`, `,
+    )})
+  `)) as unknown as {
+    source_id: string;
+    chunk_index: number;
+    text: string;
+  }[];
+  return new Map(
+    rows.map((r) => [neighborKey(r.source_id, r.chunk_index), r.text]),
+  );
+}
+
+/** Widen each hit with its ±1 chunk_index neighbors as extra context; the citation is unchanged. */
+async function expandNeighbors(
+  hits: { row: HydratedRow; score: number }[],
+): Promise<Evidence[]> {
+  const coords = neighborCoords(
+    hits.map((h) => ({
+      sourceId: h.row.source_id,
+      chunkIndex: h.row.chunk_index,
+    })),
+    NEIGHBOR_RADIUS,
+  );
+  const neighborText = await fetchNeighborText(coords);
+
+  return hits.map(({ row, score }) => {
+    const before = neighborText.get(
+      neighborKey(row.source_id, row.chunk_index - 1),
+    );
+    const after = neighborText.get(
+      neighborKey(row.source_id, row.chunk_index + 1),
+    );
+    return toEvidence(row, score, mergeNeighborText(before, row.text, after));
+  });
+}
+
+/**
  * The retrieval deep module — one stable contract; the pipeline is hidden inside.
  *
- * Slice 0 internals: dense cosine top-K over pgvector (HNSW). Slice 1 pours sparse (tsv/BM25),
- * RRF fusion, reranking, and neighbor expansion into THIS function without changing callers.
+ * Slice 1 internals: dense (pgvector cosine) + sparse (tsv/BM25) each retrieve a top-20 pool,
+ * fused by RRF (k=60) into one ranking, then the top-K hits are widened with their ±1 neighbors.
+ * Reranking pours into THIS function next (between fuse and expand), still without touching
+ * callers. Evidence.score carries the fused RRF score.
  */
 export async function retrieve(
   query: string,
   opts?: { topK?: number; filter?: Filter },
 ): Promise<Evidence[]> {
   const topK = opts?.topK ?? 5;
+  const conditions = filterConditions(opts?.filter);
   const qvec = `[${(await embedQuery(query)).join(",")}]`;
 
-  const sourceIds = opts?.filter?.sourceIds;
-  const filterSql =
-    sourceIds && sourceIds.length > 0
-      ? sql`WHERE c.source_id IN ${sql.raw(
-          `(${sourceIds.map((id) => `'${id}'`).join(",")})`,
-        )}`
-      : sql``;
+  const [dense, sparse] = await Promise.all([
+    denseSearch(qvec, conditions),
+    sparseSearch(query, conditions),
+  ]);
 
-  const rows = (await db.execute(sql`
-    SELECT
-      c.id AS chunk_id,
-      c.source_id AS source_id,
-      c.text AS text,
-      c.start_sec AS start_sec,
-      c.end_sec AS end_sec,
-      1 - (c.embedding <=> ${qvec}::vector) AS score,
-      s.title AS title,
-      s.url AS url
-    FROM ${chunk} c
-    JOIN ${source} s ON s.id = c.source_id
-    ${filterSql}
-    ORDER BY c.embedding <=> ${qvec}::vector
-    LIMIT ${topK}
-  `)) as unknown as Row[];
+  const fused = rrfFuse([dense, sparse], { k: RRF_K }).slice(0, topK);
+  const byId = await hydrate(fused.map((f) => f.id));
 
-  return rows.map((r) => ({
-    chunkId: r.chunk_id,
-    sourceId: r.source_id,
-    text: r.text,
-    score: Number(r.score),
-    locator:
-      r.start_sec === null
-        ? undefined
-        : { startSec: r.start_sec, endSec: r.end_sec ?? r.start_sec },
-    source: { title: r.title, url: r.url },
-  }));
+  const hits = fused
+    .map((f) => {
+      const row = byId.get(f.id);
+      return row ? { row, score: f.score } : undefined;
+    })
+    .filter((h): h is { row: HydratedRow; score: number } => h !== undefined);
+
+  return expandNeighbors(hits);
 }

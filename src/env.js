@@ -19,6 +19,12 @@ export const env = createEnv({
     AI_GATEWAY_API_KEY: z.string().optional(),
     /** Generation model routed through the AI Gateway (provider/model). */
     GEN_MODEL: z.string().default("zai/glm-5.3-flash"),
+    /**
+     * Contextual-Retrieval model: writes the short "situate this chunk in the whole video"
+     * blurb during ingestion. Deliberately its own knob (cheap/swappable) — it runs once per
+     * chunk offline and never touches the query path.
+     */
+    CONTEXT_MODEL: z.string().default("zai/glm-5.3-flash"),
     /** Embedding model. Stays OpenAI for 1536-dim compatibility with the schema. */
     EMBED_MODEL: z.string().default("openai/text-embedding-3-small"),
   },
@@ -41,6 +47,7 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
     AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
     GEN_MODEL: process.env.GEN_MODEL,
+    CONTEXT_MODEL: process.env.CONTEXT_MODEL,
     EMBED_MODEL: process.env.EMBED_MODEL,
     // NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
   },

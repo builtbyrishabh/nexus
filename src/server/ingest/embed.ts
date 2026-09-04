@@ -3,8 +3,8 @@ import { embed, embedMany } from "ai";
 import { env } from "~/env";
 
 /**
- * Batch-embed chunk inputs. Values are `context_text + "\n" + text` (context_text is empty
- * in Slice 0, so effectively `embed(text)`). Routed through the AI Gateway.
+ * Batch-embed chunk inputs. Values are `context_text + "\n" + text`, so the vector carries the
+ * Contextual-Retrieval blurb alongside the raw chunk. Routed through the AI Gateway.
  */
 export async function embedTexts(values: string[]): Promise<number[][]> {
   if (values.length === 0) return [];
