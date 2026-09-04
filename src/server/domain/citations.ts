@@ -1,0 +1,65 @@
+import type { Citation, Evidence, SourceCard } from "~/server/domain/types";
+
+/** Seconds → "m:ss" or "h:mm:ss". */
+export function formatTimestamp(totalSec: number): string {
+  const s = Math.max(0, Math.floor(totalSec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const two = (n: number) => n.toString().padStart(2, "0");
+  return h > 0 ? `${h}:${two(m)}:${two(sec)}` : `${m}:${two(sec)}`;
+}
+
+/** Build a YouTube deep-link to a timestamp, when the URL is a watch URL. */
+export function buildDeepLink(url: string, startSec?: number): string {
+  if (startSec === undefined) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}t=${Math.floor(startSec)}`;
+}
+
+/**
+ * Turn ranked Evidence into the output contract: a numbered `Citation[]` (index i maps 1:1
+ * to the inline `[i+1]` marker) plus a deduped `SourceCard[]`. The evidence packet handed to
+ * the model is numbered the same way, so marker index == evidence index == citation index.
+ */
+export function evidenceToCitations(evidence: Evidence[]): {
+  citations: Citation[];
+  sources: SourceCard[];
+} {
+  const citations: Citation[] = evidence.map((e) => ({
+    sourceTitle: e.source.title,
+    url: e.source.url,
+    startSec: e.locator?.startSec,
+    timestamp:
+      e.locator?.startSec === undefined
+        ? undefined
+        : formatTimestamp(e.locator.startSec),
+    deepLink: buildDeepLink(e.source.url, e.locator?.startSec),
+  }));
+
+  const seen = new Map<string, SourceCard>();
+  for (const e of evidence) {
+    if (!seen.has(e.sourceId)) {
+      seen.set(e.sourceId, {
+        sourceId: e.sourceId,
+        title: e.source.title,
+        url: e.source.url,
+      });
+    }
+  }
+
+  return { citations, sources: [...seen.values()] };
+}
+
+/** Numbered, model-facing evidence packet. Marker `[n]` must map to entry `n`. */
+export function buildEvidencePacket(evidence: Evidence[]): string {
+  return evidence
+    .map((e, i) => {
+      const ts =
+        e.locator?.startSec === undefined
+          ? ""
+          : ` (at ${formatTimestamp(e.locator.startSec)})`;
+      return `[${i + 1}] ${e.source.title}${ts}\n${e.text}`;
+    })
+    .join("\n\n");
+}

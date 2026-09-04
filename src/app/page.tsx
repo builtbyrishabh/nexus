@@ -1,53 +1,117 @@
-import Link from "next/link";
+"use client";
 
-import { LatestPost } from "~/app/_components/post";
-import { api, HydrateClient } from "~/trpc/server";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+import { useState } from "react";
 
-export default async function Home() {
-  const hello = await api.post.hello({ text: "from tRPC" });
+import type { NexusUIMessage } from "~/server/domain/ui";
+import type { Citation } from "~/server/domain/types";
 
-  void api.post.getLatest.prefetch();
+function citationsOf(message: NexusUIMessage): Citation[] {
+  for (const part of message.parts) {
+    if (part.type === "data-citations") return part.data;
+  }
+  return [];
+}
+
+/** Render assistant text, turning inline [n] markers into timestamped deep-links. */
+function AnswerText({
+  text,
+  citations,
+}: {
+  text: string;
+  citations: Citation[];
+}) {
+  const nodes = text.split(/(\[\d+\])/g).map((piece, i) => {
+    const m = /^\[(\d+)\]$/.exec(piece);
+    if (!m) return <span key={i}>{piece}</span>;
+    const idx = Number(m[1]) - 1;
+    const cite = citations[idx];
+    if (!cite) return null; // drop out-of-range markers
+    const label = cite.timestamp ? `[${cite.timestamp}]` : `[${idx + 1}]`;
+    return (
+      <a
+        key={i}
+        href={cite.deepLink ?? cite.url}
+        target="_blank"
+        rel="noreferrer"
+        className="mx-0.5 rounded bg-indigo-500/20 px-1 text-indigo-300 hover:bg-indigo-500/40"
+        title={cite.sourceTitle}
+      >
+        {label}
+      </a>
+    );
+  });
+  return <p className="whitespace-pre-wrap leading-relaxed">{nodes}</p>;
+}
+
+export default function HomePage() {
+  const { messages, sendMessage, status } = useChat<NexusUIMessage>({
+    transport: new DefaultChatTransport({ api: "/api/chat" }),
+  });
+  const [input, setInput] = useState("");
 
   return (
-    <HydrateClient>
-      <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#2e026d] to-[#15162c] text-white">
-        <div className="container flex flex-col items-center justify-center gap-12 px-4 py-16">
-          <h1 className="text-5xl font-extrabold tracking-tight sm:text-[5rem]">
-            Create <span className="text-[hsl(280,100%,70%)]">T3</span> App
-          </h1>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-8">
-            <Link
-              className="flex max-w-xs flex-col gap-4 rounded-xl bg-white/10 p-4 hover:bg-white/20"
-              href="https://create.t3.gg/en/usage/first-steps"
-              target="_blank"
-            >
-              <h3 className="text-2xl font-bold">First Steps →</h3>
-              <div className="text-lg">
-                Just the basics - Everything you need to know to set up your
-                database and authentication.
-              </div>
-            </Link>
-            <Link
-              className="flex max-w-xs flex-col gap-4 rounded-xl bg-white/10 p-4 hover:bg-white/20"
-              href="https://create.t3.gg/en/introduction"
-              target="_blank"
-            >
-              <h3 className="text-2xl font-bold">Documentation →</h3>
-              <div className="text-lg">
-                Learn more about Create T3 App, the libraries it uses, and how
-                to deploy it.
-              </div>
-            </Link>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <p className="text-2xl text-white">
-              {hello ? hello.greeting : "Loading tRPC query..."}
-            </p>
-          </div>
+    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-4 p-6">
+      <header>
+        <h1 className="text-2xl font-semibold">Nexus</h1>
+        <p className="text-sm text-white/60">
+          Ask about the ingested video. Answers are grounded and cited to the
+          second.
+        </p>
+      </header>
 
-          <LatestPost />
-        </div>
-      </main>
-    </HydrateClient>
+      <div className="flex flex-1 flex-col gap-4">
+        {messages.map((message) => {
+          const text = message.parts
+            .filter((p) => p.type === "text")
+            .map((p) => (p as { text: string }).text)
+            .join("");
+          const citations = citationsOf(message);
+          return (
+            <div
+              key={message.id}
+              className={
+                message.role === "user"
+                  ? "self-end rounded-lg bg-white/10 px-3 py-2"
+                  : "self-start rounded-lg bg-indigo-500/10 px-3 py-2"
+              }
+            >
+              {message.role === "assistant" ? (
+                <AnswerText text={text} citations={citations} />
+              ) : (
+                <p className="whitespace-pre-wrap">{text}</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (input.trim() && status === "ready") {
+            sendMessage({ text: input });
+            setInput("");
+          }
+        }}
+        className="flex gap-2"
+      >
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Ask a question…"
+          disabled={status !== "ready"}
+          className="flex-1 rounded-lg border border-white/15 bg-transparent px-3 py-2 outline-none focus:border-indigo-400"
+        />
+        <button
+          type="submit"
+          disabled={status !== "ready" || !input.trim()}
+          className="rounded-lg bg-indigo-500 px-4 py-2 font-medium disabled:opacity-40"
+        >
+          Ask
+        </button>
+      </form>
+    </main>
   );
 }
