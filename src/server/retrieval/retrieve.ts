@@ -1,5 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 
+import { env } from "~/env";
 import { db } from "~/server/db";
 import { chunk, source } from "~/server/db/schema";
 import type { Evidence, Filter } from "~/server/domain/types";
@@ -9,12 +10,15 @@ import {
   neighborCoords,
   neighborKey,
 } from "~/server/retrieval/neighbors";
+import { rerankDocuments } from "~/server/retrieval/rerank";
 import { rrfFuse } from "~/server/retrieval/rrf";
 
 // Canonical settings (docs/ARCHITECTURE.md): each retriever returns a top-20 candidate pool;
-// RRF fuses them with k=60. Rerank (→ top-3..5) slots in here later; neighbor radius is ±1.
+// RRF fuses them with k=60. When reranking, the fused top-20 is the reranker's input pool;
+// otherwise the fused top-K is the answer. Neighbor radius is ±1.
 const CANDIDATE_K = 20;
 const RRF_K = 60;
+const RERANK_POOL_K = CANDIDATE_K;
 const NEIGHBOR_RADIUS = 1;
 
 type HydratedRow = {
@@ -176,16 +180,19 @@ async function expandNeighbors(
 /**
  * The retrieval deep module — one stable contract; the pipeline is hidden inside.
  *
- * Slice 1 internals: dense (pgvector cosine) + sparse (tsv/BM25) each retrieve a top-20 pool,
- * fused by RRF (k=60) into one ranking, then the top-K hits are widened with their ±1 neighbors.
- * Reranking pours into THIS function next (between fuse and expand), still without touching
- * callers. Evidence.score carries the fused RRF score.
+ * Internals: dense (pgvector cosine) + sparse (tsv/BM25) each retrieve a top-20 pool, fused by
+ * RRF (k=60) into one ranking. When reranking is on (Slice 2), the fused top-20 is scored by a
+ * cross-encoder and cut to top-K; otherwise the fused top-K stands. Either way the survivors are
+ * widened with their ±1 neighbors. Rerank defaults to `env.RERANK_ENABLED` and is overridable
+ * per-call so the eval harness can measure its lift. Evidence.score carries the ranker's score
+ * (rerank relevance when reranked, fused RRF score otherwise). Callers never see the difference.
  */
 export async function retrieve(
   query: string,
-  opts?: { topK?: number; filter?: Filter },
+  opts?: { topK?: number; filter?: Filter; rerank?: boolean },
 ): Promise<Evidence[]> {
   const topK = opts?.topK ?? 5;
+  const useRerank = opts?.rerank ?? env.RERANK_ENABLED;
   const conditions = filterConditions(opts?.filter);
   const qvec = `[${(await embedQuery(query)).join(",")}]`;
 
@@ -194,13 +201,28 @@ export async function retrieve(
     sparseSearch(query, conditions),
   ]);
 
-  const fused = rrfFuse([dense, sparse], { k: RRF_K }).slice(0, topK);
-  const byId = await hydrate(fused.map((f) => f.id));
+  const fused = rrfFuse([dense, sparse], { k: RRF_K });
 
-  const hits = fused
-    .map((f) => {
-      const row = byId.get(f.id);
-      return row ? { row, score: f.score } : undefined;
+  // Hydrate exactly the rows we will use: the rerank pool when reranking, else the fused top-K.
+  // Reranking reads candidate text, so the pool must be hydrated first regardless.
+  const poolIds = fused.slice(0, useRerank ? RERANK_POOL_K : topK).map((f) => f.id);
+  const byId = await hydrate(poolIds);
+
+  const ranked: { id: string; score: number }[] = useRerank
+    ? await rerankDocuments(
+        query,
+        poolIds.flatMap((id) => {
+          const row = byId.get(id);
+          return row ? [{ id, text: row.text }] : [];
+        }),
+        topK,
+      )
+    : fused.slice(0, topK);
+
+  const hits = ranked
+    .map(({ id, score }) => {
+      const row = byId.get(id);
+      return row ? { row, score } : undefined;
     })
     .filter((h): h is { row: HydratedRow; score: number } => h !== undefined);
 

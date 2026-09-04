@@ -1,6 +1,7 @@
 import { generateText, gateway } from "ai";
 
 import { env } from "~/env";
+import { mapPool } from "~/server/util/pool";
 
 /**
  * Contextual Retrieval (Anthropic's technique). A raw transcript chunk, ripped out of its
@@ -39,31 +40,6 @@ async function contextualizeOne(
     prompt: contextPrompt(documentText, chunkText),
   });
   return text.trim();
-}
-
-/**
- * Bounded-concurrency map: run `fn` over every item with at most `limit` in flight, preserving
- * input order in the output. Contextualizing a long video is N independent model calls; this
- * keeps them flowing without opening N sockets at once.
- */
-async function mapPool<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let cursor = 0;
-  const worker = async () => {
-    while (true) {
-      const i = cursor++;
-      if (i >= items.length) return;
-      results[i] = await fn(items[i]!, i);
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, worker),
-  );
-  return results;
 }
 
 /**

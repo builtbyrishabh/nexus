@@ -1,20 +1,62 @@
 import "./_env";
 
+import { ingestChannel } from "~/server/ingest/channel";
 import { ingestVideo } from "~/server/ingest/pipeline";
 
-// Slice 0 stand-in: Steve Jobs' 2005 Stanford commencement — reliably captioned, clear
-// spoken content, good for Q&A. The real creator is chosen at Slice 3 (full-channel ingest).
+// Single-video stand-in: Steve Jobs' 2005 Stanford commencement — reliably captioned, clear
+// spoken content, good for Q&A and the golden eval set.
 const STAND_IN_VIDEO_ID = "UF8uR6Z6KLc";
 
-async function main() {
-  const videoId = process.argv[2] ?? STAND_IN_VIDEO_ID;
-  console.log(`Ingesting video ${videoId}…`);
+function usage(): never {
+  console.error(
+    [
+      "Usage:",
+      "  pnpm ingest [<videoIdOrUrl>]            ingest one video (default: stand-in)",
+      "  pnpm ingest --channel <ref> [--limit N] ingest a channel's recent uploads",
+      "                                          <ref> = UC id | @handle | channel/video URL",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
 
-  const result = await ingestVideo(videoId);
-  if (result.skipped) {
-    console.log(`✓ Skipped (transcript unchanged): "${result.title}"`);
+async function ingestOne(videoId: string) {
+  console.log(`Ingesting video ${videoId}…`);
+  const r = await ingestVideo(videoId);
+  console.log(
+    r.skipped
+      ? `✓ Skipped (transcript unchanged): "${r.title}"`
+      : `✓ Ingested "${r.title}" → ${r.chunks} chunks`,
+  );
+}
+
+async function ingestWholeChannel(ref: string, limit?: number) {
+  console.log(`Discovering uploads for ${ref}…`);
+  const result = await ingestChannel(ref, {
+    limit,
+    onProgress: (o) => {
+      if (o.status === "failed") console.log(`  ✗ ${o.videoId}: ${o.error}`);
+      else console.log(`  ${o.status === "skipped" ? "•" : "✓"} ${o.title} (${o.chunks} chunks)`);
+    },
+  });
+  console.log(
+    `\nChannel done: ${result.ingested} ingested, ${result.skipped} skipped, ` +
+      `${result.failed} failed (of ${result.discovered} discovered).`,
+  );
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const channelIdx = args.indexOf("--channel");
+
+  if (channelIdx !== -1) {
+    const ref = args[channelIdx + 1];
+    if (!ref || ref.startsWith("--")) usage();
+    const limitIdx = args.indexOf("--limit");
+    const limit = limitIdx !== -1 ? Number(args[limitIdx + 1]) : undefined;
+    if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) usage();
+    await ingestWholeChannel(ref, limit);
   } else {
-    console.log(`✓ Ingested "${result.title}" → ${result.chunks} chunks`);
+    await ingestOne(args[0] ?? STAND_IN_VIDEO_ID);
   }
   process.exit(0);
 }

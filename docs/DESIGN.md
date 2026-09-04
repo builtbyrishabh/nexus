@@ -12,10 +12,21 @@ See `ARCHITECTURE.md` for the strategy/best-practices behind these choices.
 - Embeddings: **`text-embedding-3-small`, 1536 dims**.
 
 **Slice 1 status (2026-09-04):** Contextual Retrieval, hybrid dense+sparse retrieval, RRF
-fusion, and ±1 neighbor expansion are **built**. **Reranking is deferred** — it slots into
-`retrieve()` between fusion and neighbor expansion, but we add it *last*, once a golden eval
-set exists, so its lift is measured rather than asserted (see §7 and "each tier gated by
-evals" in ARCHITECTURE.md). Provider (Cohere vs Voyage) is decided at that point.
+fusion, and ±1 neighbor expansion are **built**. Reranking was deferred until a golden eval
+set existed (so its lift is measured, not asserted) — now delivered in Slice 2.
+
+**Slice 2 status — evals + reranking (Tier 1 complete):** The **golden set**
+(`src/server/evals/golden.ts`) + Mastra's native **Faithfulness / Answer-Relevancy /
+Context-Precision** scorers drive a harness (`pnpm eval`, gated by exit code). **Reranking**
+(AI SDK `rerank` via the Gateway) now slots into `retrieve()` between RRF fusion and neighbor
+expansion, off by default and toggled per-run so `pnpm eval --compare` reads the lift directly.
+Provider defaults to Cohere rerank-3.5 (one env knob, `RERANK_MODEL`).
+
+**Slice 3 status — full-channel ingest:** `youtubeLoader.discover()` enumerates a channel's
+uploads from the public RSS feed (UC id / @handle / URL, no API key), `ingestChannel()` runs the
+idempotent per-video pipeline with bounded concurrency and per-video error isolation, and a
+**Whisper fallback** (AI SDK `transcribe` via the Gateway) transcribes caption-less videos when
+`WHISPER_FALLBACK` is on. `pnpm ingest --channel <ref> [--limit N]`.
 
 ---
 
@@ -123,8 +134,8 @@ type Filter = { sourceIds?: string[]; kind?: Source["kind"] };
 function retrieve(query: string, opts?: { topK?: number; filter?: Filter }): Promise<Evidence[]>;
 ```
 Tier 1 internals (fixed): dense top-20 (pgvector cosine) + sparse top-20 (tsv/BM25)
-→ RRF (k=60) → top-K → [rerank, deferred] → ±1 neighbor expansion. Built today: everything
-except rerank, which is a measured add-on once evals exist (see Slice 1 status above).
+→ RRF (k=60) → rerank → top-K → ±1 neighbor expansion. All built (rerank added in Slice 2, off
+by default and toggled per-call via `opts.rerank`; see the Slice status notes above).
 
 ### c) Output — inline markers + structured citations (LOCKED)
 ```ts
