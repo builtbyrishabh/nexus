@@ -11,6 +11,16 @@ export const env = createEnv({
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
+    /**
+     * Vercel AI Gateway key. Optional at build/typecheck time: on Vercel the gateway can
+     * authenticate via the OIDC token, and it is only strictly required to actually run
+     * ingestion (embeddings) and generation locally.
+     */
+    AI_GATEWAY_API_KEY: z.string().optional(),
+    /** Generation model routed through the AI Gateway (provider/model). */
+    GEN_MODEL: z.string().default("zai/glm-5.3-flash"),
+    /** Embedding model. Stays OpenAI for 1536-dim compatibility with the schema. */
+    EMBED_MODEL: z.string().default("openai/text-embedding-3-small"),
   },
 
   /**
@@ -29,6 +39,9 @@ export const env = createEnv({
   runtimeEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
     NODE_ENV: process.env.NODE_ENV,
+    AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
+    GEN_MODEL: process.env.GEN_MODEL,
+    EMBED_MODEL: process.env.EMBED_MODEL,
     // NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
   },
   /**
