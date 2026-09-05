@@ -51,6 +51,13 @@ export const env = createEnv({
     RERANK_ENABLED: booleanFlag("false"),
     /** LLM judge for the eval scorers (Faithfulness/Answer-Relevancy/Context-Precision). */
     EVAL_MODEL: z.string().default("zai/glm-5.3-flash"),
+    /** Speech-to-text model for the Whisper fallback (no caption track), via the AI Gateway. */
+    WHISPER_MODEL: z.string().default("openai/whisper-1"),
+    /**
+     * Whisper fallback is off by default — it only earns its cost on videos with no caption
+     * track, and pulls audio at ingest time. Flip on to transcribe caption-less videos.
+     */
+    WHISPER_FALLBACK: booleanFlag("false"),
   },
 
   /**
@@ -76,6 +83,8 @@ export const env = createEnv({
     RERANK_MODEL: process.env.RERANK_MODEL,
     RERANK_ENABLED: process.env.RERANK_ENABLED,
     EVAL_MODEL: process.env.EVAL_MODEL,
+    WHISPER_MODEL: process.env.WHISPER_MODEL,
+    WHISPER_FALLBACK: process.env.WHISPER_FALLBACK,
     // NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
   },
   /**

@@ -22,6 +22,12 @@ Context-Precision** scorers drive a harness (`pnpm eval`, gated by exit code). *
 expansion, off by default and toggled per-run so `pnpm eval --compare` reads the lift directly.
 Provider defaults to Cohere rerank-3.5 (one env knob, `RERANK_MODEL`).
 
+**Slice 3 status — full-channel ingest:** `youtubeLoader.discover()` enumerates a channel's
+uploads from the public RSS feed (UC id / @handle / URL, no API key), `ingestChannel()` runs the
+idempotent per-video pipeline with bounded concurrency and per-video error isolation, and a
+**Whisper fallback** (AI SDK `transcribe` via the Gateway) transcribes caption-less videos when
+`WHISPER_FALLBACK` is on. `pnpm ingest --channel <ref> [--limit N]`.
+
 ---
 
 ## 1. The skill (product contract)
@@ -104,10 +110,10 @@ but store `text` and `context_text` **separately** so lexical search + display u
 ### a) Ingestion seam — source-agnostic (books = a new loader, not a rewrite)
 ```ts
 interface SourceLoader {
-  discover(): AsyncIterable<SourceRef>;          // channel -> videos
-  load(ref: SourceRef): Promise<LoadedSource>;   // transcript + metadata
+  discover(): AsyncIterable<SourceRef>;              // channel -> videos
+  loadSegments(ref: SourceRef): Promise<Segment[]>; // transcript (drives the idempotency hash)
+  loadMeta(ref: SourceRef): Promise<SourceMeta>;    // title/url/author, fetched only on write
 }
-type LoadedSource = { source: SourceMeta; segments: Segment[] };
 type Segment = { text: string; startSec?: number; endSec?: number };
 ```
 The sync orchestrator (80%) turns `segments -> chunks -> context -> embed -> upsert`,

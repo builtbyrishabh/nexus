@@ -33,9 +33,11 @@ export type IngestResult = {
 export async function ingestVideo(input: string): Promise<IngestResult> {
   const videoId = toVideoId(input);
   const ref: SourceRef = { kind: "youtube_video", externalId: videoId };
-  const loaded = await youtubeLoader.load(ref);
 
-  const transcriptText = loaded.segments.map((s) => s.text).join("\n");
+  // Fetch only the transcript first: the hash decides whether we write, and if not, an idempotent
+  // re-run must stay cheap — no metadata request per already-ingested video.
+  const segments = await youtubeLoader.loadSegments(ref);
+  const transcriptText = segments.map((s) => s.text).join("\n");
   const contentHash = createHash("sha256")
     .update(transcriptText)
     .digest("hex");
@@ -56,22 +58,20 @@ export async function ingestVideo(input: string): Promise<IngestResult> {
     };
   }
 
-  // Do all remote work up front. If any of it throws, nothing below runs and no row changes.
+  // Transcript is new or changed → we will write. Fetch metadata and do all remote work up front;
+  // if any of it throws, nothing below runs and no row changes.
   // Contextual Retrieval: situate each chunk in the full transcript, then embed
   // `context + "\n" + text` (locked storage rule) so the vector carries the context while the
   // raw `text` stays separate for lexical search + display.
-  const built = chunkSegments(loaded.segments);
-  const contexts =
-    built.length === 0
-      ? []
-      : await contextualizeChunks(
-          transcriptText,
-          built.map((c) => c.text),
-        );
-  const embeddings =
-    built.length === 0
-      ? []
-      : await embedTexts(built.map((c, i) => `${contexts[i]}\n${c.text}`));
+  const meta = await youtubeLoader.loadMeta(ref);
+  const built = chunkSegments(segments);
+  const contexts = await contextualizeChunks(
+    transcriptText,
+    built.map((c) => c.text),
+  );
+  const embeddings = await embedTexts(
+    built.map((c, i) => `${contexts[i]}\n${c.text}`),
+  );
 
   // Atomic swap: upsert the source (hash included), replace its chunks. The new hash is only
   // durable once every replacement row is in — no window where the hash is ahead of the data.
@@ -81,18 +81,18 @@ export async function ingestVideo(input: string): Promise<IngestResult> {
       .values({
         kind: "youtube_video",
         externalId: videoId,
-        title: loaded.source.title,
-        url: loaded.source.url,
-        author: loaded.source.author,
-        publishedAt: loaded.source.publishedAt,
+        title: meta.title,
+        url: meta.url,
+        author: meta.author,
+        publishedAt: meta.publishedAt,
         contentHash,
       })
       .onConflictDoUpdate({
         target: [sourceTable.kind, sourceTable.externalId],
         set: {
-          title: loaded.source.title,
-          url: loaded.source.url,
-          author: loaded.source.author,
+          title: meta.title,
+          url: meta.url,
+          author: meta.author,
           contentHash,
         },
       })
@@ -106,7 +106,7 @@ export async function ingestVideo(input: string): Promise<IngestResult> {
       sourceId,
       chunkIndex: i,
       text: c.text,
-      contextText: contexts[i] ?? "",
+      contextText: contexts[i]!,
       embedding: embeddings[i]!,
       startSec: c.startSec,
       endSec: c.endSec,
@@ -124,7 +124,7 @@ export async function ingestVideo(input: string): Promise<IngestResult> {
 
   return {
     sourceId: result.sourceId,
-    title: loaded.source.title,
+    title: meta.title,
     chunks: result.chunks,
     skipped: false,
   };
