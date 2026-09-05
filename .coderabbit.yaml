@@ -1,0 +1,92 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Docs: https://docs.coderabbit.ai/reference/yaml-template
+language: en-US
+tone_instructions: >-
+  Be direct and technical. Explain the "why" behind a suggestion, not just the
+  fix. Skip praise and filler.
+
+reviews:
+  # More nitpicks than the default `chill`; this is a solo repo where extra
+  # signal is worth the noise. Drop to `chill` if reviews get chatty.
+  profile: assertive
+  poem: false
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  auto_review:
+    enabled: true
+    drafts: false
+
+  path_filters:
+    - "!pnpm-lock.yaml"
+    - "!drizzle/**"
+    - "!.next/**"
+
+  path_instructions:
+    - path: "src/server/ingest/**"
+      instructions: >-
+        Ingest pipeline (YouTube transcript -> chunk -> contextualize -> embed).
+        Flag: unbounded concurrency or missing batching on LLM/embedding calls,
+        missing retry/backoff on network calls, chunk boundaries that can drop
+        or duplicate transcript text, and off-by-one errors in token or
+        timestamp math. Pipeline steps must stay idempotent — re-ingesting a
+        video must not create duplicate rows.
+    - path: "src/server/retrieval/**"
+      instructions: >-
+        Hybrid retrieval (vector + full-text, fused with RRF, expanded with
+        neighbor chunks). Flag: incorrect RRF rank handling or ties, dropped or
+        duplicated candidates when merging result sets, unbounded result sets,
+        and neighbor expansion that crosses video boundaries.
+    - path: "src/server/db/**"
+      instructions: >-
+        Drizzle schema and queries. Flag raw SQL interpolation of user input,
+        missing indexes on columns used for filtering or ordering, and schema
+        changes made without a corresponding generated migration.
+    - path: "src/server/**"
+      instructions: >-
+        Server-only code. Flag any secret or server-only value that could leak
+        to the client, and any missing input validation on tRPC/route handler
+        boundaries. Prefer narrow, explicit types over `any`.
+    - path: "src/app/**"
+      instructions: >-
+        Next.js App Router. Flag Server/Client Component boundary mistakes
+        ("use client" where it isn't needed, server-only imports pulled into
+        client code), and missing loading/error states on data fetching.
+    - path: "**/*.test.ts"
+      instructions: >-
+        Tests should assert behaviour, not implementation details. Flag tests
+        that only re-state the implementation, and missing coverage of edge
+        cases (empty input, single element, boundary values).
+
+  finishing_touches:
+    docstrings:
+      enabled: true
+    unit_tests:
+      enabled: true
+
+  tools:
+    # No ESLint/Biome/Prettier config in this repo — skip the JS linters and
+    # let CodeRabbit's own analysis plus the security scanners do the work.
+    eslint:
+      enabled: false
+    biome:
+      enabled: false
+    gitleaks:
+      enabled: true
+    semgrep:
+      enabled: true
+    github-checks:
+      enabled: true
+
+chat:
+  art: false
+  auto_reply: true
+
+knowledge_base:
+  learnings:
+    scope: local
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - "docs/*.md"

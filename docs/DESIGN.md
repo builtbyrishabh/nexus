@@ -11,6 +11,12 @@ See `ARCHITECTURE.md` for the strategy/best-practices behind these choices.
 - Retrieval: **fixed hybrid pipeline** (dense + sparse → RRF → rerank) for Tier 1. Agentic loop is a later, flag-gated Tier 2.
 - Embeddings: **`text-embedding-3-small`, 1536 dims**.
 
+**Slice 1 status (2026-09-04):** Contextual Retrieval, hybrid dense+sparse retrieval, RRF
+fusion, and ±1 neighbor expansion are **built**. **Reranking is deferred** — it slots into
+`retrieve()` between fusion and neighbor expansion, but we add it *last*, once a golden eval
+set exists, so its lift is measured rather than asserted (see §7 and "each tier gated by
+evals" in ARCHITECTURE.md). Provider (Cohere vs Voyage) is decided at that point.
+
 ---
 
 ## 1. The skill (product contract)
@@ -117,7 +123,8 @@ type Filter = { sourceIds?: string[]; kind?: Source["kind"] };
 function retrieve(query: string, opts?: { topK?: number; filter?: Filter }): Promise<Evidence[]>;
 ```
 Tier 1 internals (fixed): dense top-20 (pgvector cosine) + sparse top-20 (tsv/BM25)
-→ RRF (k=60) → top-10 → rerank → top-3..5, + optional ±1 neighbor expansion.
+→ RRF (k=60) → top-K → [rerank, deferred] → ±1 neighbor expansion. Built today: everything
+except rerank, which is a measured add-on once evals exist (see Slice 1 status above).
 
 ### c) Output — inline markers + structured citations (LOCKED)
 ```ts
@@ -184,3 +191,5 @@ message -> rewrite to standalone query
 - Generation model + whether to route via AI Gateway (embeddings stay OpenAI for dim compat).
 - Query rewrite: rule-based vs a cheap model call (Tier 2).
 - Eval golden-set: how many Q/A pairs, who authors them, LLM-judge model.
+- **Reranker provider + whether it earns its place** — decide against the golden set: Cohere
+  rerank-3.5 vs Voyage rerank-2.5 vs no rerank if the measured lift is marginal.

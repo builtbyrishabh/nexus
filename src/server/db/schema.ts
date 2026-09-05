@@ -59,8 +59,8 @@ export const source = createTable(
 
 /**
  * `chunk` — the retrievable unit. One timestamped slice of a transcript: what retrieval
- * searches and what the model reads. Slice 0 reads a narrow subset (text, embedding,
- * start/end sec); `context_text` and `tsv` are populated but idle until Slice 1.
+ * searches and what the model reads. `context_text` holds the Contextual-Retrieval blurb;
+ * `embedding` is embed(context_text + text); `tsv` indexes the same for sparse search.
  */
 export const chunk = createTable(
   "chunk",
@@ -73,7 +73,7 @@ export const chunk = createTable(
     text: text("text").notNull(), // raw verbatim transcript: display + lexical
     contextText: text("context_text").notNull().default(""), // Slice 1 blurb
     embedding: vector("embedding", { dimensions: 1536 }).notNull(), // embed(context_text + "\n" + text)
-    // Sparse index, generated in-DB from context_text + text. Idle in Slice 0.
+    // Sparse index, generated in-DB from context_text + text, queried by sparse retrieval.
     tsv: tsvector("tsv").generatedAlwaysAs(
       sql`to_tsvector('english', coalesce(context_text, '') || ' ' || text)`,
     ),
