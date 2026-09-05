@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Slice 2 — Reranking &amp; Evals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+<style>
+  :root {
+    --paper:      #EEF0EE;
+    --surface:    #FBFCFB;
+    --surface-2:  #F4F6F3;
+    --ink:        #15181C;
+    --ink-soft:   #3A4148;
+    --muted:      #6B7480;
+    --line:       #D8DCD8;
+    --line-soft:  #E6E9E5;
+    --rerank:     #2A54D6;
+    --rerank-bg:  #E6ECFB;
+    --evals:      #B57A12;
+    --evals-bg:   #F6ECD6;
+    --pass:       #1F8A52;
+    --fail:       #C64239;
+    --code-bg:    #F2F4F1;
+    --code-ink:   #23303f;
+
+    --measure: 42rem;
+    --wide: 58rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #101317;
+      --surface:    #171B20;
+      --surface-2:  #1C2127;
+      --ink:        #E7EAEC;
+      --ink-soft:   #C2C8CD;
+      --muted:      #8A939D;
+      --line:       #2A3138;
+      --line-soft:  #232a31;
+      --rerank:     #7EA0FF;
+      --rerank-bg:  #1B2440;
+      --evals:      #E7B85A;
+      --evals-bg:   #33290F;
+      --pass:       #4BC585;
+      --fail:       #F0736A;
+      --code-bg:    #12171d;
+      --code-ink:   #cdd6e0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:      #101317;
+    --surface:    #171B20;
+    --surface-2:  #1C2127;
+    --ink:        #E7EAEC;
+    --ink-soft:   #C2C8CD;
+    --muted:      #8A939D;
+    --line:       #2A3138;
+    --line-soft:  #232a31;
+    --rerank:     #7EA0FF;
+    --rerank-bg:  #1B2440;
+    --evals:      #E7B85A;
+    --evals-bg:   #33290F;
+    --pass:       #4BC585;
+    --fail:       #F0736A;
+    --code-bg:    #12171d;
+    --code-ink:   #cdd6e0;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: var(--wide); margin: 0 auto; padding: 0 1.5rem; }
+  .col  { max-width: var(--measure); margin-left: auto; margin-right: auto; }
+
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  code {
+    font-size: 0.86em;
+    background: var(--code-bg);
+    color: var(--code-ink);
+    padding: 0.1em 0.38em;
+    border-radius: 4px;
+    border: 1px solid var(--line-soft);
+    white-space: nowrap;
+  }
+  a { color: var(--rerank); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+  /* ---------- header ---------- */
+  header { border-bottom: 1px solid var(--line); background: var(--surface); }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.9rem 0; font-size: 0.8rem;
+  }
+  .brand { font-weight: 600; letter-spacing: 0.02em; }
+  .brand span { color: var(--muted); font-weight: 400; }
+  .toggle {
+    font: inherit; font-size: 0.78rem; cursor: pointer;
+    background: var(--surface-2); color: var(--ink-soft);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 0.28rem 0.8rem;
+  }
+  .toggle:hover { border-color: var(--muted); }
+  .toggle:focus-visible { outline: 2px solid var(--rerank); outline-offset: 2px; }
+
+  .hero { padding: 3.4rem 0 2.8rem; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.74rem; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 1rem;
+  }
+  h1 {
+    font-family: "Instrument Serif", Georgia, serif;
+    font-weight: 400; font-size: clamp(2.9rem, 7vw, 4.6rem);
+    line-height: 1.02; letter-spacing: -0.01em; text-wrap: balance;
+    margin: 0 0 1.1rem;
+  }
+  h1 em { font-style: italic; color: var(--rerank); }
+  .lede { font-size: 1.18rem; color: var(--ink-soft); max-width: 40rem; margin: 0; }
+
+  .pillars { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 2.4rem; }
+  @media (max-width: 640px) { .pillars { grid-template-columns: 1fr; } }
+  .pillar {
+    border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem 1.2rem;
+    background: var(--surface);
+  }
+  .pillar .tag {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; letter-spacing: 0.06em;
+    text-transform: uppercase; font-weight: 600; display: inline-block; margin-bottom: 0.5rem;
+    padding: 0.12rem 0.5rem; border-radius: 4px;
+  }
+  .pillar.r .tag { color: var(--rerank); background: var(--rerank-bg); }
+  .pillar.e .tag { color: var(--evals); background: var(--evals-bg); }
+  .pillar h3 { margin: 0 0 0.3rem; font-size: 1.08rem; }
+  .pillar p { margin: 0; font-size: 0.95rem; color: var(--ink-soft); }
+
+  /* ---------- sections ---------- */
+  section { padding: 3rem 0; border-top: 1px solid var(--line-soft); }
+  .kicker {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.75rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 0.7rem;
+    display: flex; align-items: center; gap: 0.6rem;
+  }
+  .kicker .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .kicker.r .dot { background: var(--rerank); }
+  .kicker.e .dot { background: var(--evals); }
+  .kicker.n .dot { background: var(--muted); }
+  h2 {
+    font-family: "Instrument Serif", Georgia, serif; font-weight: 400;
+    font-size: clamp(2rem, 4.5vw, 2.9rem); line-height: 1.08; letter-spacing: -0.01em;
+    margin: 0 0 1.2rem; text-wrap: balance;
+  }
+  h4 {
+    font-size: 1.06rem; margin: 2rem 0 0.5rem; letter-spacing: -0.005em;
+  }
+  p { margin: 0 0 1.1rem; }
+  .col > p, .col > ul, .col > ol { color: var(--ink-soft); }
+  strong { color: var(--ink); font-weight: 600; }
+  ul, ol { padding-left: 1.2rem; margin: 0 0 1.1rem; }
+  li { margin-bottom: 0.4rem; }
+
+  .note {
+    font-size: 0.9rem; color: var(--muted); border-left: 2px solid var(--line);
+    padding-left: 0.9rem; margin: 1.4rem 0;
+  }
+
+  /* ---------- io card: input -> function -> output ---------- */
+  .io {
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    background: var(--surface); margin: 1.6rem 0; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  }
+  .io-head {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.9rem; font-weight: 600;
+    padding: 0.75rem 1.1rem; border-bottom: 1px solid var(--line-soft);
+    background: var(--surface-2); color: var(--code-ink);
+    display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  }
+  .io-head .file { color: var(--muted); font-weight: 400; font-size: 0.8rem; margin-left: auto; }
+  .io-grid { display: grid; grid-template-columns: 1fr auto 1fr; align-items: stretch; }
+  @media (max-width: 620px) { .io-grid { grid-template-columns: 1fr; } }
+  .io-cell { padding: 1rem 1.1rem; }
+  .io-cell + .io-cell { border-left: 1px solid var(--line-soft); }
+  @media (max-width: 620px) { .io-cell + .io-cell { border-left: 0; border-top: 1px solid var(--line-soft); } }
+  .io-arrow {
+    display: flex; align-items: center; justify-content: center; padding: 0 0.4rem;
+    color: var(--muted); font-size: 1.3rem; border-left: 1px solid var(--line-soft);
+  }
+  @media (max-width: 620px) {
+    .io-arrow { border-left: 0; border-top: 1px solid var(--line-soft); padding: 0.3rem; transform: rotate(90deg); }
+  }
+  .io-label {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.68rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 0.55rem;
+  }
+  .io-cell .mono { font-size: 0.82rem; line-height: 1.5; color: var(--code-ink); display: block; }
+  .io-cell .desc { font-size: 0.86rem; color: var(--ink-soft); margin-top: 0.5rem; }
+
+  /* ---------- pipeline diagram ---------- */
+  .figure {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 1.6rem 1.4rem 1.3rem; margin: 1.8rem 0;
+  }
+  .figcap {
+    font-size: 0.82rem; color: var(--muted); text-align: center; margin-top: 1.1rem;
+    font-family: "IBM Plex Mono", monospace; letter-spacing: 0.02em;
+  }
+  .pipe { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; justify-content: center; }
+  .stage {
+    flex: 1 1 auto; min-width: 92px; text-align: center;
+    border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2);
+    padding: 0.7rem 0.5rem; display: flex; flex-direction: column; gap: 0.25rem; justify-content: center;
+  }
+  .stage b { font-size: 0.82rem; font-weight: 600; }
+  .stage small { font-size: 0.68rem; color: var(--muted); font-family: "IBM Plex Mono", monospace; }
+  .stage.new {
+    border: 1.5px solid var(--rerank); background: var(--rerank-bg);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--rerank) 12%, transparent);
+  }
+  .stage.new b { color: var(--rerank); }
+  .stage.new small { color: var(--rerank); opacity: 0.85; }
+  .arrow-x { display: flex; align-items: center; color: var(--muted); padding: 0 0.35rem; font-size: 0.95rem; }
+  .parallel { display: flex; flex-direction: column; gap: 0.4rem; flex: 1 1 auto; min-width: 92px; }
+  .parallel .stage { min-width: 0; }
+  .newbadge {
+    display: inline-block; font-family: "IBM Plex Mono", monospace; font-size: 0.6rem;
+    letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600;
+    color: var(--rerank); background: var(--surface); border: 1px solid var(--rerank);
+    border-radius: 4px; padding: 0.05rem 0.35rem; margin-top: 0.15rem;
+  }
+
+  /* ---------- table ---------- */
+  .tablewrap { overflow-x: auto; margin: 1.6rem 0; border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; min-width: 520px; }
+  thead th {
+    text-align: left; font-family: "IBM Plex Mono", monospace; font-size: 0.72rem;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600;
+    padding: 0.8rem 1rem; background: var(--surface-2); border-bottom: 1px solid var(--line);
+  }
+  tbody td { padding: 0.85rem 1rem; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td .n { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .axisname { font-weight: 600; color: var(--ink); }
+  .measures { color: var(--muted); font-size: 0.85rem; }
+
+  /* ---------- golden set split ---------- */
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.6rem 0; }
+  @media (max-width: 620px) { .split { grid-template-columns: 1fr; } }
+  .qcard { border: 1px solid var(--line); border-radius: 11px; padding: 1.1rem 1.2rem; background: var(--surface); }
+  .qcard .h {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; letter-spacing: 0.06em;
+    text-transform: uppercase; font-weight: 600; margin-bottom: 0.7rem;
+    display: flex; align-items: center; gap: 0.45rem;
+  }
+  .qcard.ans .h { color: var(--pass); }
+  .qcard.ref .h { color: var(--fail); }
+  .qcard .h .pip { width: 8px; height: 8px; border-radius: 50%; }
+  .qcard.ans .h .pip { background: var(--pass); }
+  .qcard.ref .h .pip { background: var(--fail); }
+  .q { font-size: 0.9rem; color: var(--ink-soft); margin: 0 0 0.55rem; padding-left: 0.9rem; position: relative; }
+  .q::before { content: "›"; position: absolute; left: 0; color: var(--muted); }
+  .qcard .verdict { font-size: 0.82rem; color: var(--muted); margin-top: 0.8rem; border-top: 1px solid var(--line-soft); padding-top: 0.7rem; }
+
+  /* ---------- cli ---------- */
+  .cli {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 12px;
+    padding: 0.4rem 0; margin: 1.6rem 0; font-family: "IBM Plex Mono", monospace; font-size: 0.85rem;
+    overflow-x: auto;
+  }
+  .cli .row { display: grid; grid-template-columns: minmax(230px, auto) 1fr; gap: 1.2rem; padding: 0.55rem 1.1rem; align-items: baseline; }
+  .cli .row + .row { border-top: 1px solid var(--line-soft); }
+  .cli .cmd { color: var(--code-ink); white-space: nowrap; }
+  .cli .cmd .flag { color: var(--rerank); }
+  .cli .exp { color: var(--muted); font-family: "IBM Plex Sans", sans-serif; font-size: 0.86rem; }
+
+  .flow { margin: 1.4rem 0; padding-left: 0; list-style: none; counter-reset: step; }
+  .flow li {
+    position: relative; padding-left: 2.4rem; margin-bottom: 1rem; counter-increment: step;
+    color: var(--ink-soft); font-size: 0.96rem;
+  }
+  .flow li::before {
+    content: counter(step); position: absolute; left: 0; top: -0.1rem;
+    width: 1.7rem; height: 1.7rem; border-radius: 50%;
+    background: var(--evals-bg); color: var(--evals); font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; justify-content: center;
+  }
+
+  footer { border-top: 1px solid var(--line); padding: 2.6rem 0 3.4rem; color: var(--muted); font-size: 0.88rem; }
+  footer .col { text-align: center; }
+  .refusal {
+    font-family: "Instrument Serif", Georgia, serif; font-size: 1.5rem; font-style: italic;
+    color: var(--ink); text-align: center; margin: 1.4rem 0; line-height: 1.3;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .toggle { transition: border-color 0.15s ease; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">Nexus <span>· retrieval field notes</span></div>
+      <button class="toggle" id="themeToggle" type="button" aria-label="Toggle light and dark theme">◑ theme</button>
+    </div>
+  </div>
+  <div class="wrap hero">
+    <div class="col">
+      <p class="eyebrow">Slice 2 · Tier 1 complete</p>
+      <h1>Reranking &amp;<br /><em>Evals</em></h1>
+      <p class="lede">Slice&nbsp;1 made retrieval <em>good</em>. Slice&nbsp;2 does two things: it adds one careful re-sorting step to make retrieval <strong>better</strong>, and it builds a report card so we can <strong>prove</strong> it — instead of just believing it.</p>
+    </div>
+    <div class="col pillars">
+      <div class="pillar r">
+        <span class="tag">Reranking</span>
+        <h3>A second, careful reader</h3>
+        <p>One new step in <code>retrieve()</code> that actually reads each candidate against the question and re-sorts by true relevance.</p>
+      </div>
+      <div class="pillar e">
+        <span class="tag">Evals</span>
+        <h3>A graded exam</h3>
+        <p>A fixed set of questions, three strict LLM graders, and a pass bar — run with <code>pnpm eval</code>, gated in CI.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ THE SETUP ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker n"><span class="dot"></span>Ground floor</p>
+      <h2>Where we were at the end of Slice&nbsp;1</h2>
+      <p>To see what Slice&nbsp;2 changes, hold the old pipeline in your head. When someone asks a question, <code>retrieve()</code> did four things, in order:</p>
+      <ol>
+        <li><strong>Dense search</strong> — find chunks whose <em>meaning</em> is close to the question (vector similarity). Top 20.</li>
+        <li><strong>Sparse search</strong> — find chunks that share exact <em>words</em> with the question (full-text). Top 20.</li>
+        <li><strong>RRF fusion</strong> — merge the two lists into one ranking. But RRF only sees <em>rank positions</em> — "this chunk was #2 in dense and #5 in sparse." It never reads the actual text.</li>
+        <li><strong>Neighbor expansion</strong> — widen each survivor with the chunk just before and after it (±1), for context.</li>
+      </ol>
+      <p>That last point is the gap. RRF is fast and cheap, but it's blind to content. It's like a librarian who ranks books by which shelves they came from — never opening a single one.</p>
+    </div>
+  </section>
+
+  <!-- ============ RERANKING ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker r"><span class="dot"></span>Pillar 1 · Reranking</p>
+      <h2>Opening the books</h2>
+      <p>A <strong>reranker</strong> (a "cross-encoder") is a model that takes the question <em>and</em> one chunk's full text <em>together</em>, and scores how relevant that chunk truly is. It reads. Because it reads, it catches relevance that the fast retrievers missed.</p>
+      <p>The trade-off is cost: reading every chunk in the database would be far too slow. So the reranker only ever sees a <strong>small pool</strong> — the 20 candidates that dense + sparse + RRF already narrowed down to. Fast retrievers cast a wide net; the reranker carefully sorts what they caught. That's why it slots in <em>after</em> fusion and <em>before</em> we cut to the final few.</p>
+    </div>
+
+    <div class="col">
+      <h4>The one new function</h4>
+      <p>Everything about reranking lives in one small, honest function. Here is exactly what it takes and what it hands back:</p>
+    </div>
+
+    <div class="col io">
+      <div class="io-head">rerankDocuments() <span class="file">src/server/retrieval/rerank.ts</span></div>
+      <div class="io-grid">
+        <div class="io-cell">
+          <div class="io-label">Takes in</div>
+          <span class="mono">query: string</span>
+          <span class="mono">docs: {&nbsp;id, text&nbsp;}[]</span>
+          <span class="mono">topN: number</span>
+          <p class="desc">The question, the pool of candidate chunks (id + full text), and how many to keep.</p>
+        </div>
+        <div class="io-arrow" aria-hidden="true">→</div>
+        <div class="io-cell">
+          <div class="io-label">Gives back</div>
+          <span class="mono">RankedId[]</span>
+          <span class="mono">= {&nbsp;id, score&nbsp;}[]</span>
+          <p class="desc">The <code>topN</code> most relevant chunk ids, best first, each with a fresh relevance score from the model.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <p>Under the hood it calls the AI SDK's native <code>rerank()</code> through the Vercel AI Gateway (the same credential used for embeddings and generation — one door for every model). The default reranker is <code>cohere/rerank-v3.5</code>, set by one env knob, <code>RERANK_MODEL</code>.</p>
+
+      <p class="note">One subtlety, handled by a tiny helper called <code>mapRanking()</code>: the model doesn't know our chunk ids. It ranks the <em>documents array</em> we handed it and returns positions like "item&nbsp;#3 is best." Since we fed it texts in a known id order, <code>mapRanking</code> just translates those positions back into chunk ids. Out-of-range positions are dropped defensively — retrieval must never throw.</p>
+
+      <h4>Where it slots into the pipeline</h4>
+      <p>The reranker doesn't replace anything — it's inserted as one new stage. Same inputs, same outputs at the boundary; only the middle got smarter.</p>
+    </div>
+
+    <div class="col figure">
+      <div class="pipe">
+        <div class="parallel">
+          <div class="stage"><b>Dense</b><small>top&nbsp;20</small></div>
+          <div class="stage"><b>Sparse</b><small>top&nbsp;20</small></div>
+        </div>
+        <div class="arrow-x" aria-hidden="true">→</div>
+        <div class="stage"><b>RRF</b><small>fuse · k=60</small></div>
+        <div class="arrow-x" aria-hidden="true">→</div>
+        <div class="stage new">
+          <b>Rerank</b><small>pool of 20 → top&nbsp;K</small>
+          <span class="newbadge">new in slice 2</span>
+        </div>
+        <div class="arrow-x" aria-hidden="true">→</div>
+        <div class="stage"><b>Neighbors</b><small>±1 context</small></div>
+        <div class="arrow-x" aria-hidden="true">→</div>
+        <div class="stage"><b>Evidence</b><small>top&nbsp;K</small></div>
+      </div>
+      <p class="figcap">retrieve() — the highlighted stage is the only thing Slice 2 inserts</p>
+    </div>
+
+    <div class="col">
+      <h4>Off by default — on purpose</h4>
+      <p>Here's the interesting design choice. Reranking is <strong>disabled by default</strong> (<code>RERANK_ENABLED=false</code>). Two reasons:</p>
+      <ul>
+        <li><strong>No silent changes.</strong> Until you flip the switch, <code>retrieve()</code> behaves <em>exactly</em> as it did in Slice&nbsp;1. Nothing about the shipped product moved.</li>
+        <li><strong>Measured, not asserted.</strong> Everyone <em>believes</em> reranking helps. We wanted to <em>prove</em> it on our own data. So <code>retrieve()</code> accepts a per-call override — <code>retrieve(query, {&nbsp;rerank: true&nbsp;})</code> — which lets the eval harness run the exact same questions both ways and read the difference.</li>
+      </ul>
+      <p>Which is the perfect handoff to the second pillar. You can't say "better" until you can measure it.</p>
+    </div>
+  </section>
+
+  <!-- ============ EVALS ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker e"><span class="dot"></span>Pillar 2 · Evals</p>
+      <h2>Proving it</h2>
+      <p>An <strong>eval</strong> is a repeatable exam for the whole answer path. It has three parts, and they map exactly onto how you'd grade any exam: a fixed set of <strong>questions</strong>, a strict <strong>grader</strong>, and a <strong>pass bar</strong>.</p>
+
+      <h4>1 · The questions — the "golden set"</h4>
+      <p>A hand-written list of questions with known-correct behavior, in <code>evals/golden.ts</code>. It grades against the Slice&nbsp;0/1 stand-in corpus (Steve Jobs' 2005 Stanford commencement speech). There are two <em>kinds</em> of question, and that split is the whole point:</p>
+    </div>
+
+    <div class="col split">
+      <div class="qcard ans">
+        <div class="h"><span class="pip"></span>Answerable · 8 cases</div>
+        <p class="q">What did dropping out let him study, and how did it shape the Mac?</p>
+        <p class="q">How does he describe being fired from Apple?</p>
+        <p class="q">How does thinking about death help him decide?</p>
+        <p class="verdict">The corpus covers these. We grade the <em>answer's</em> quality.</p>
+      </div>
+      <div class="qcard ref">
+        <div class="h"><span class="pip"></span>Refusal · 3 cases</div>
+        <p class="q">What are his thoughts on Bitcoin?</p>
+        <p class="q">What's his recipe for lasagna?</p>
+        <p class="q">What does he say about Android?</p>
+        <p class="verdict">Not in the corpus. The <em>only</em> correct answer is to refuse.</p>
+      </div>
+    </div>
+
+    <div class="col">
+      <p>The refusal cases exist because, for this product, <strong>the refusal is the product</strong>. A RAG bot that confidently makes things up is worse than useless. So the exam deliberately includes traps — questions the corpus can't answer — and checks that the bot declines rather than hallucinates. Its one true line:</p>
+      <p class="refusal">"He doesn't cover that in his videos."</p>
+
+      <h4>2 · The grader — three axes + one gate</h4>
+      <p>For answerable questions, we use Mastra's built-in <strong>LLM-judge scorers</strong> (native — we write no grading prompts of our own). A separate judge model, <code>EVAL_MODEL</code>, reads the answer and scores it on three axes, each from 0 to 1. Refusal cases are graded differently: not on prose, but on the <em>decision</em> — did it refuse exactly when it should have?</p>
+    </div>
+
+    <div class="col tablewrap">
+      <table>
+        <thead>
+          <tr><th>What it checks</th><th>The question it asks</th><th>Pass bar</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="axisname">Faithfulness</td>
+            <td class="measures">Are the answer's claims actually supported by the retrieved text? (the hallucination guard)</td>
+            <td><span class="n">≥ 0.70</span></td>
+          </tr>
+          <tr>
+            <td class="axisname">Answer relevancy</td>
+            <td class="measures">Does the answer actually address the question that was asked?</td>
+            <td><span class="n">≥ 0.70</span></td>
+          </tr>
+          <tr>
+            <td class="axisname">Context precision</td>
+            <td class="measures">Was the retrieved evidence relevant, and ranked relevant-first? (this is the axis reranking should lift)</td>
+            <td><span class="n">≥ 0.60</span></td>
+          </tr>
+          <tr>
+            <td class="axisname">Refusal accuracy</td>
+            <td class="measures">Did it refuse on exactly the out-of-corpus questions — no more, no less?</td>
+            <td><span class="n">= 1.00</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col">
+      <p class="note">Refusal accuracy must be a perfect <code>1.00</code> — the only bar that isn't a "good enough" threshold. The refusal is the product, so it has to be exact: answering a trap <em>or</em> wrongly refusing a real question both fail the run.</p>
+
+      <h4>The grading function</h4>
+      <p>Like the reranker, the grading is one clean function. It takes what the model was asked, what it said, and the exact evidence it was given — and returns three numbers:</p>
+    </div>
+
+    <div class="col io">
+      <div class="io-head">scoreAnswer() <span class="file">src/server/evals/score.ts</span></div>
+      <div class="io-grid">
+        <div class="io-cell">
+          <div class="io-label">Takes in</div>
+          <span class="mono">query: string</span>
+          <span class="mono">answer: string</span>
+          <span class="mono">contextTexts: string[]</span>
+          <p class="desc">The question, the model's answer, and the <em>exact</em> evidence texts it read — so grading judges what it actually saw.</p>
+        </div>
+        <div class="io-arrow" aria-hidden="true">→</div>
+        <div class="io-cell">
+          <div class="io-label">Gives back</div>
+          <span class="mono">{ faithfulness,</span>
+          <span class="mono">&nbsp;&nbsp;answerRelevancy,</span>
+          <span class="mono">&nbsp;&nbsp;contextPrecision }</span>
+          <p class="desc">Three scores in [0, 1], one per axis above.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h4>3 · The harness — and why it grades the REAL path</h4>
+      <p>Tying it together, <code>runCase()</code> runs one golden question through the exact same code production uses. This is the detail that makes the whole exam trustworthy — it doesn't test a look-alike, it tests the real thing:</p>
+      <ol class="flow">
+        <li>Call the real <code>retrieve()</code> (with rerank on or off — the variable under test).</li>
+        <li>If retrieval finds nothing, emit the refusal directly — exactly as <code>ask()</code> does for real users.</li>
+        <li>Otherwise, build the answer with <code>buildAnswerMessages()</code> — the <em>same</em> prompt builder <code>ask()</code> uses — and let the real agent answer.</li>
+        <li>Detect whether it refused. If it answered, grade it with <code>scoreAnswer()</code>. If it refused, record only the decision.</li>
+      </ol>
+      <p>Then <code>summarize()</code> — a pure, dependency-free function — averages each axis over the answerable cases, computes refusal accuracy over all cases, and checks every score against its bar. Its <code>passed</code> boolean <em>is</em> the tier gate: <em>"don't advance a tier until its evals pass."</em></p>
+
+      <h4>Running it</h4>
+      <p>Three modes, one command. The first two <strong>gate via exit code</strong> — a failing run returns non-zero, so CI can block a merge. The third measures the reranker's lift directly:</p>
+    </div>
+
+    <div class="col cli">
+      <div class="row"><span class="cmd">pnpm eval</span><span class="exp">Baseline retrieval, rerank off. Gates the build.</span></div>
+      <div class="row"><span class="cmd">pnpm eval <span class="flag">--rerank</span></span><span class="exp">Same exam, rerank on. Gates the build.</span></div>
+      <div class="row"><span class="cmd">pnpm eval <span class="flag">--compare</span></span><span class="exp">Runs both, prints the rerank lift (on − off). Informational.</span></div>
+    </div>
+
+    <div class="col">
+      <p>That <code>--compare</code> mode is the payoff of Pillar&nbsp;1's "off by default" choice: it runs the identical golden set twice and prints the per-axis difference, so the reranker's value is a number you can read — not a claim you have to trust.</p>
+    </div>
+  </section>
+
+  <!-- ============ DRY CLEANUP ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker n"><span class="dot"></span>Housekeeping · DRY</p>
+      <h2>Two things moved so they'd stop repeating</h2>
+      <p>Slice&nbsp;2 also did small cleanups so nothing important is written twice (the project's DRY / "easier to change" rule):</p>
+      <ul>
+        <li><strong>The refusal string + the prompt builder → <code>answer.ts</code>.</strong> The refusal text and <code>buildAnswerMessages()</code> now live in one place, read by three callers: the agent's instructions, the live <code>ask()</code> path, and the eval harness. One string, three readers — so they can never drift. It also means the eval grades the <em>real</em> refusal, byte-for-byte.</li>
+        <li><strong>The concurrency helper → <code>util/pool.ts</code>.</strong> A tiny <code>mapPool()</code> (run N tasks at a time) was extracted so both the ingest contextualizer and the eval runner share one bounded-concurrency implementation.</li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="col">
+      <p><strong>Slice 2 in one line:</strong> add a careful re-reading step to retrieval, and a graded exam that proves — with a number — that it helps and that the bot still refuses what it shouldn't answer.</p>
+      <p style="margin-top:1rem">51 tests pass · typecheck &amp; production build clean · Tier&nbsp;1 complete</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var btn = document.getElementById("themeToggle");
+    var root = document.documentElement;
+    function current() {
+      var set = root.getAttribute("data-theme");
+      if (set) return set;
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    btn.addEventListener("click", function () {
+      root.setAttribute("data-theme", current() === "dark" ? "light" : "dark");
+    });
+  })();
+</script>
+
+</body>
+</html>

@@ -1,4 +1,5 @@
-import { evidenceToCitations, buildEvidencePacket } from "~/server/domain/citations";
+import { buildAnswerMessages, REFUSAL_TEXT } from "~/server/answer";
+import { evidenceToCitations } from "~/server/domain/citations";
 import type { Ask, AskChunk } from "~/server/domain/types";
 import { nexusAgent } from "~/server/mastra";
 import { retrieve } from "~/server/retrieval/retrieve";
@@ -18,17 +19,13 @@ export async function* ask(input: Ask): AsyncGenerator<AskChunk> {
   yield { citations, sources };
 
   if (evidence.length === 0) {
-    yield { textDelta: "He doesn't cover that in his videos." };
+    yield { textDelta: REFUSAL_TEXT };
     return;
   }
 
-  const packet = buildEvidencePacket(evidence);
-  const out = await nexusAgent.stream([
-    {
-      role: "user",
-      content: `Evidence:\n\n${packet}\n\nQuestion: ${input.query}`,
-    },
-  ]);
+  const out = await nexusAgent.stream(
+    buildAnswerMessages(input.query, evidence),
+  );
 
   const reader = out.textStream.getReader();
   try {

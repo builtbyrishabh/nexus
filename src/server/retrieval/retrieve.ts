@@ -1,5 +1,6 @@
 import { sql, type SQL } from "drizzle-orm";
 
+import { env } from "~/env";
 import { db } from "~/server/db";
 import { chunk, source } from "~/server/db/schema";
 import type { Evidence, Filter } from "~/server/domain/types";
@@ -9,10 +10,12 @@ import {
   neighborCoords,
   neighborKey,
 } from "~/server/retrieval/neighbors";
+import { rerankDocuments } from "~/server/retrieval/rerank";
 import { rrfFuse } from "~/server/retrieval/rrf";
 
 // Canonical settings (docs/ARCHITECTURE.md): each retriever returns a top-20 candidate pool;
-// RRF fuses them with k=60. Rerank (→ top-3..5) slots in here later; neighbor radius is ±1.
+// RRF fuses them with k=60. When reranking, that same fused pool (up to CANDIDATE_K after the cut)
+// is the reranker's input; otherwise the fused top-K is the answer. Neighbor radius is ±1.
 const CANDIDATE_K = 20;
 const RRF_K = 60;
 const NEIGHBOR_RADIUS = 1;
@@ -38,12 +41,7 @@ function filterConditions(filter?: Filter): SQL[] {
   const conditions: SQL[] = [];
   const sourceIds = filter?.sourceIds;
   if (sourceIds && sourceIds.length > 0) {
-    conditions.push(
-      sql`c.source_id IN (${sql.join(
-        sourceIds.map((id) => sql`${id}`),
-        sql`, `,
-      )})`,
-    );
+    conditions.push(sql`c.source_id = ANY(${sourceIds}::uuid[])`);
   }
   if (filter?.kind) conditions.push(sql`s.kind = ${filter.kind}`);
   return conditions;
@@ -103,10 +101,7 @@ async function hydrate(ids: string[]): Promise<Map<string, HydratedRow>> {
       s.url AS url
     FROM ${chunk} c
     JOIN ${source} s ON s.id = c.source_id
-    WHERE c.id IN (${sql.join(
-      ids.map((id) => sql`${id}`),
-      sql`, `,
-    )})
+    WHERE c.id = ANY(${ids}::uuid[])
   `)) as unknown as HydratedRow[];
 
   return new Map(rows.map((r) => [r.chunk_id, r]));
@@ -176,33 +171,55 @@ async function expandNeighbors(
 /**
  * The retrieval deep module — one stable contract; the pipeline is hidden inside.
  *
- * Slice 1 internals: dense (pgvector cosine) + sparse (tsv/BM25) each retrieve a top-20 pool,
- * fused by RRF (k=60) into one ranking, then the top-K hits are widened with their ±1 neighbors.
- * Reranking pours into THIS function next (between fuse and expand), still without touching
- * callers. Evidence.score carries the fused RRF score.
+ * Internals: dense (pgvector cosine) + sparse (tsv/BM25) each retrieve a top-20 pool, fused by
+ * RRF (k=60) into one ranking. When reranking is on (Slice 2), the fused top-20 is scored by a
+ * cross-encoder and cut to top-K; otherwise the fused top-K stands. Either way the survivors are
+ * widened with their ±1 neighbors. Rerank defaults to `env.RERANK_ENABLED` and is overridable
+ * per-call so the eval harness can measure its lift. Evidence.score carries the ranker's score
+ * (rerank relevance when reranked, fused RRF score otherwise). Callers never see the difference.
  */
 export async function retrieve(
   query: string,
-  opts?: { topK?: number; filter?: Filter },
+  opts?: { topK?: number; filter?: Filter; rerank?: boolean },
 ): Promise<Evidence[]> {
   const topK = opts?.topK ?? 5;
+  const useRerank = opts?.rerank ?? env.RERANK_ENABLED;
   const conditions = filterConditions(opts?.filter);
-  const qvec = `[${(await embedQuery(query)).join(",")}]`;
 
+  // Only dense needs the embedding; start it, then overlap the round trip with the sparse search
+  // instead of paying its latency serially in front of both retrievers.
+  const qvecP = embedQuery(query).then((v) => `[${v.join(",")}]`);
   const [dense, sparse] = await Promise.all([
-    denseSearch(qvec, conditions),
+    qvecP.then((qvec) => denseSearch(qvec, conditions)),
     sparseSearch(query, conditions),
   ]);
 
-  const fused = rrfFuse([dense, sparse], { k: RRF_K }).slice(0, topK);
-  const byId = await hydrate(fused.map((f) => f.id));
+  const fused = rrfFuse([dense, sparse], { k: RRF_K });
 
-  const hits = fused
-    .map((f) => {
-      const row = byId.get(f.id);
-      return row ? { row, score: f.score } : undefined;
-    })
-    .filter((h): h is { row: HydratedRow; score: number } => h !== undefined);
+  // Hydrate exactly the rows we will use: the fused candidate pool when reranking (the reranker
+  // reads candidate text), else the fused top-K. `pool` is the one hydration contract — the
+  // reranker's input and the fallback both derive from it, so there is no second lookup pass.
+  const poolIds = fused.slice(0, useRerank ? CANDIDATE_K : topK).map((f) => f.id);
+  const byId = await hydrate(poolIds);
+  const pool = poolIds.flatMap((id) => {
+    const row = byId.get(id);
+    return row ? [{ id, row }] : [];
+  });
+
+  // Rerank is a ranking *improvement*, never a dependency of the answer path: if the provider
+  // errors (quota, outage), fall back to the fused top-K so the user still gets the Slice-1 answer.
+  const ranked: { id: string; score: number }[] = useRerank
+    ? await rerankDocuments(
+        query,
+        pool.map((p) => ({ id: p.id, text: p.row.text })),
+        topK,
+      ).catch(() => fused.slice(0, topK))
+    : fused.slice(0, topK);
+
+  const hits = ranked.flatMap(({ id, score }) => {
+    const row = byId.get(id);
+    return row ? [{ row, score }] : [];
+  });
 
   return expandNeighbors(hits);
 }
