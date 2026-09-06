@@ -5,62 +5,104 @@ import { and, eq } from "drizzle-orm";
 import { db } from "~/server/db";
 import { chunk as chunkTable, source as sourceTable } from "~/server/db/schema";
 import type { NewChunk } from "~/server/db/schema";
-import type { SourceRef } from "~/server/domain/types";
+import type {
+  Provenance,
+  SourceLoader,
+  SourceRef,
+  Transcript,
+} from "~/server/domain/types";
 import { chunkSegments } from "~/server/ingest/chunk";
 import { contextualizeChunks } from "~/server/ingest/contextualize";
 import { embedTexts } from "~/server/ingest/embed";
 import { toVideoId, youtubeLoader } from "~/server/ingest/youtube-loader";
 
-export type IngestResult = {
-  sourceId: string;
-  title: string;
-  chunks: number;
-  skipped: boolean;
+/** One vocabulary for every per-source outcome, from a single video to a whole channel. */
+export type IngestResult =
+  | { status: "ingested"; ref: SourceRef; sourceId: string; title: string; chunks: number }
+  | { status: "skipped"; ref: SourceRef; sourceId: string; title: string; reason: SkipReason }
+  | { status: "failed"; ref: SourceRef; error: unknown };
+
+export type SkipReason = "stt-final" | "unchanged";
+
+/** What the gates read from an existing `source` row. */
+type ExistingSource = {
+  contentHash: string;
+  metadata: Record<string, unknown> | null;
+};
+
+/** What we persist in `source.metadata` (jsonb; no migration). */
+export type SourceProvenance = {
+  provenance: Provenance;
+  sttProvider?: "assemblyai";
 };
 
 /**
- * Ingest one video end-to-end, idempotently: load → chunk (carry timestamps) → contextualize
- * → embed → upsert. Each chunk gets a Contextual-Retrieval blurb before embedding; `tsv` is a
- * generated column the DB computes from context + text. Re-running an unchanged transcript is
- * a no-op.
- *
- * Accepts a video ID or any YouTube URL; both are canonicalized to the video ID so identity,
- * uniqueness, and the watch URL agree. All remote work (transcript, embeddings) happens
- * BEFORE any write, and the source hash + chunk swap commit together in one transaction — so
- * a failed embed or insert never leaves a fresh hash pointing at missing chunks (which the
- * next run would wrongly skip).
+ * The provenance gate. Pure, so the ordering contract is testable without a DB: an STT
+ * transcript is final — nothing upstream can change it, so re-runs must skip before any
+ * network call. Runs on the existing row alone, before the transcript is fetched.
  */
-export async function ingestVideo(input: string): Promise<IngestResult> {
-  const videoId = toVideoId(input);
-  const ref: SourceRef = { kind: "youtube_video", externalId: videoId };
-  const loaded = await youtubeLoader.load(ref);
+export function provenanceGate(existing: ExistingSource | undefined): SkipReason | undefined {
+  const provenance = existing?.metadata?.provenance;
+  return provenance === "stt" ? "stt-final" : undefined;
+}
 
-  const transcriptText = loaded.segments.map((s) => s.text).join("\n");
-  const contentHash = createHash("sha256")
-    .update(transcriptText)
+/**
+ * The hash gate. The transcript IS the content: same sha256 means chunks, contexts and
+ * embeddings would come out identical, so skip before metadata, contextualize, embed or write.
+ */
+export function hashGate(
+  existing: ExistingSource | undefined,
+  contentHash: string,
+): SkipReason | undefined {
+  return existing?.contentHash === contentHash ? "unchanged" : undefined;
+}
+
+export function contentHashOf(transcript: Transcript): string {
+  return createHash("sha256")
+    .update(transcript.segments.map((s) => s.text).join("\n"))
     .digest("hex");
+}
 
+/**
+ * Ingest one source end-to-end, idempotently, without naming a source kind. Gates run
+ * cheapest first (provenance, then hash); only then `loadMeta -> chunk -> contextualize ->
+ * embed -> upsert`.
+ *
+ * All remote work (transcript, embeddings) happens BEFORE any write, and the source hash +
+ * chunk swap commit together in one transaction — so a failed embed or insert never leaves a
+ * fresh hash pointing at missing chunks (which the next run would wrongly skip).
+ */
+export async function ingestSource(
+  ref: SourceRef,
+  loader: SourceLoader,
+): Promise<Exclude<IngestResult, { status: "failed" }>> {
   const existing = await db.query.source.findFirst({
     where: and(
-      eq(sourceTable.kind, "youtube_video"),
-      eq(sourceTable.externalId, videoId),
+      eq(sourceTable.kind, ref.kind),
+      eq(sourceTable.externalId, ref.externalId),
     ),
   });
 
-  if (existing && existing.contentHash === contentHash) {
-    return {
-      sourceId: existing.id,
-      title: existing.title,
-      chunks: 0,
-      skipped: true,
-    };
+  const sttFinal = provenanceGate(existing);
+  if (existing && sttFinal) {
+    return { status: "skipped", ref, sourceId: existing.id, title: existing.title, reason: sttFinal };
+  }
+
+  const transcript = await loader.loadTranscript(ref);
+  const contentHash = contentHashOf(transcript);
+
+  const unchanged = hashGate(existing, contentHash);
+  if (existing && unchanged) {
+    return { status: "skipped", ref, sourceId: existing.id, title: existing.title, reason: unchanged };
   }
 
   // Do all remote work up front. If any of it throws, nothing below runs and no row changes.
   // Contextual Retrieval: situate each chunk in the full transcript, then embed
   // `context + "\n" + text` (locked storage rule) so the vector carries the context while the
   // raw `text` stays separate for lexical search + display.
-  const built = chunkSegments(loaded.segments);
+  const meta = await loader.loadMeta(ref);
+  const transcriptText = transcript.segments.map((s) => s.text).join("\n");
+  const built = chunkSegments(transcript.segments);
   const contexts =
     built.length === 0
       ? []
@@ -73,27 +115,31 @@ export async function ingestVideo(input: string): Promise<IngestResult> {
       ? []
       : await embedTexts(built.map((c, i) => `${contexts[i]}\n${c.text}`));
 
+  const metadata: SourceProvenance = { provenance: transcript.provenance };
+
   // Atomic swap: upsert the source (hash included), replace its chunks. The new hash is only
   // durable once every replacement row is in — no window where the hash is ahead of the data.
   const result = await db.transaction(async (tx) => {
     const [saved] = await tx
       .insert(sourceTable)
       .values({
-        kind: "youtube_video",
-        externalId: videoId,
-        title: loaded.source.title,
-        url: loaded.source.url,
-        author: loaded.source.author,
-        publishedAt: loaded.source.publishedAt,
+        kind: meta.kind,
+        externalId: meta.externalId,
+        title: meta.title,
+        url: meta.url,
+        author: meta.author,
+        publishedAt: meta.publishedAt,
         contentHash,
+        metadata,
       })
       .onConflictDoUpdate({
         target: [sourceTable.kind, sourceTable.externalId],
         set: {
-          title: loaded.source.title,
-          url: loaded.source.url,
-          author: loaded.source.author,
+          title: meta.title,
+          url: meta.url,
+          author: meta.author,
           contentHash,
+          metadata,
         },
       })
       .returning();
@@ -122,10 +168,13 @@ export async function ingestVideo(input: string): Promise<IngestResult> {
     return { sourceId, chunks: rows.length };
   });
 
-  return {
-    sourceId: result.sourceId,
-    title: loaded.source.title,
-    chunks: result.chunks,
-    skipped: false,
-  };
+  return { status: "ingested", ref, sourceId: result.sourceId, title: meta.title, chunks: result.chunks };
+}
+
+/** A video is just a video: accepts a video ID or any YouTube URL, never widens to the channel. */
+export function ingestVideo(input: string) {
+  return ingestSource(
+    { kind: "youtube_video", externalId: toVideoId(input) },
+    youtubeLoader,
+  );
 }

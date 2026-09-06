@@ -31,7 +31,7 @@ doesn't move an eval score, we delete it.
 | Vector + keyword store | **Neon Postgres** (`pgvector` + `tsvector`) | Dense *and* sparse retrieval in one DB → hybrid with zero extra infra | 🟢 |
 | Embeddings | `text-embedding-3-small` | Cheap, strong default | 🟢 |
 | Rerank + generation | via **AI Gateway** | One endpoint for both; easy provider swaps | 🟢 |
-| Transcript ingest | `youtube-transcript` + Whisper fallback | Whisper only when no caption track exists | 🟡 |
+| Transcript ingest | `youtubei.js` discovery + `youtube-transcript` + AssemblyAI fallback | STT (via AI SDK `transcribe()`) only when no caption track exists | 🟡 |
 
 **Why Mastra + Chat SDK and not one or the other:** Mastra Channels (`@mastra/core` ≥ 1.22)
 accepts Chat SDK adapters directly on the `Agent` constructor. Mastra is the brain
@@ -47,7 +47,7 @@ A RAG chatbot is **three sync jobs in one request** + **one async job offline**.
                     ┌─────────────────── INGESTION (async, offline) ───────────────────┐
   YouTube video  →  fetch transcript  →  chunk (timestamped)  →  add context  →  embed  →  upsert
                     (caption API /       (200–300 tok,           (Contextual      (dense +   (pgvector
-                     Whisper fallback)    ~15% overlap)           Retrieval)       sparse)    + tsvector)
+                     AssemblyAI fallback) ~15% overlap)           Retrieval)       sparse)    + tsvector)
                     └───────────────────────────────────────────────────────────────────┘
 
                     ┌─────────────────── QUERY PATH (sync, one request) ───────────────┐

@@ -22,17 +22,37 @@ export type SourceMeta = {
   publishedAt?: Date;
 };
 
-/** A reference a loader can `load()` — e.g. one video in a channel. */
+/** A reference a loader can load — e.g. one video in a channel. Identity only, on purpose. */
 export type SourceRef = {
   kind: SourceKind;
   externalId: string;
 };
 
-/** What a loader returns: metadata + the raw (timestamped) segments. */
-export type LoadedSource = {
-  source: SourceMeta;
+/**
+ * Anything that names a channel: handle, UC id, channel URL, or a video (id/URL) that resolves
+ * to its owner. Opaque to the pipeline; the loader interprets it.
+ */
+export type ChannelScope = string;
+
+/** Where a transcript came from. An STT transcript is final — re-runs never redo it. */
+export type Provenance = "captions" | "stt";
+
+/** The expensive thing a loader fetches. Drives the content hash. */
+export type Transcript = {
   segments: Segment[];
+  provenance: Provenance;
 };
+
+/**
+ * The ingestion seam. `ingestSource(ref, loader)` never names a source kind: it asks for the
+ * transcript first (to run the skip gates), and for metadata only once it has decided to write.
+ */
+export interface SourceLoader {
+  /** Every upload the scope belongs to, newest first, streamed page by page. */
+  discover(scope: ChannelScope, opts?: { limit?: number }): AsyncIterable<SourceRef>;
+  loadTranscript(ref: SourceRef): Promise<Transcript>;
+  loadMeta(ref: SourceRef): Promise<SourceMeta>;
+}
 
 /** Where in the source — powers deep-links. */
 export type Locator = {
