@@ -45,6 +45,13 @@ export type Evidence = {
   chunkId: string;
   sourceId: string;
   text: string;
+  /**
+   * The Contextual-Retrieval blurb: who is speaking, about what, in which video. The raw
+   * transcript says "he", "the practice", "this" — the blurb names them. It rides with the
+   * evidence so the generator can tie a question's entity ("Smile Match") to a chunk that
+   * never says the name; measured: without it the model wrongly refuses ~25% of such questions.
+   */
+  context?: string;
   score: number;
   locator?: Locator;
   source: { title: string; url: string };
