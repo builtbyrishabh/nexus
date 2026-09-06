@@ -174,8 +174,9 @@ async function expandNeighbors(
  * Internals: dense (pgvector cosine) + sparse (tsv/BM25) each retrieve a top-20 pool, fused by
  * RRF (k=60) into one ranking. When reranking is on (Slice 2), the fused top-20 is scored by a
  * cross-encoder and cut to top-K; otherwise the fused top-K stands. Either way the survivors are
- * widened with their ±1 neighbors. Rerank defaults to `env.RERANK_ENABLED` and is overridable
- * per-call so the eval harness can measure its lift. Evidence.score carries the ranker's score
+ * widened with their ±1 neighbors. Rerank defaults to `env.RERANK_ENABLED` (best-effort: a provider
+ * failure falls back to the fused order) and is overridable per-call so the eval harness can
+ * measure its lift (strict: an explicit `rerank: true` propagates provider failures). Evidence.score carries the ranker's score
  * (rerank relevance when reranked, fused RRF score otherwise). Callers never see the difference.
  */
 export async function retrieve(
@@ -183,6 +184,8 @@ export async function retrieve(
   opts?: { topK?: number; filter?: Filter; rerank?: boolean },
 ): Promise<Evidence[]> {
   const topK = opts?.topK ?? 5;
+  // An explicit `rerank` is a request for that pipeline; only the env default is best-effort.
+  const rerankExplicit = opts?.rerank !== undefined;
   const useRerank = opts?.rerank ?? env.RERANK_ENABLED;
   const conditions = filterConditions(opts?.filter);
 
@@ -206,14 +209,22 @@ export async function retrieve(
     return row ? [{ id, row }] : [];
   });
 
-  // Rerank is a ranking *improvement*, never a dependency of the answer path: if the provider
-  // errors (quota, outage), fall back to the fused top-K so the user still gets the Slice-1 answer.
+  // Rerank is a ranking *improvement*, never a dependency of the answer path: when it is on by
+  // env default and the provider errors (quota, outage), fall back to the fused top-K so the user
+  // still gets the Slice-1 answer — loudly, so a misconfigured reranker is visible in the logs.
+  // A caller that asked for `rerank: true` explicitly (the eval measuring its lift) gets the
+  // error instead: silently grading the baseline as "rerank on" would report a lift that was
+  // never measured.
   const ranked: { id: string; score: number }[] = useRerank
     ? await rerankDocuments(
         query,
         pool.map((p) => ({ id: p.id, text: p.row.text })),
         topK,
-      ).catch(() => fused.slice(0, topK))
+      ).catch((err: unknown) => {
+        if (rerankExplicit) throw err;
+        console.warn("[retrieve] rerank failed; falling back to fused top-K", err);
+        return fused.slice(0, topK);
+      })
     : fused.slice(0, topK);
 
   const hits = ranked.flatMap(({ id, score }) => {
