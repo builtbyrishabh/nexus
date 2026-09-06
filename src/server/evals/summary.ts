@@ -6,6 +6,8 @@
  * logic is unit-testable without touching the network.
  */
 
+import type { Citation } from "~/server/domain/types";
+
 /** The three Tier-1 eval axes (docs canonical set). Each in [0, 1]. */
 export type AxisScores = {
   faithfulness: number;
@@ -35,6 +37,9 @@ export type CaseResult = {
   expectRefusal: boolean;
   refused: boolean;
   scores?: AxisScores;
+  /** What the model said and what it was shown — for `--verbose` inspection; the gate ignores both. */
+  answer?: string;
+  citations?: Citation[];
 };
 
 export type EvalThresholds = AxisScores & { refusalAccuracy: number };
