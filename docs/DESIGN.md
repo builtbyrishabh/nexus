@@ -25,10 +25,14 @@ query path: `prepareAnswer()` in `src/server/ask.ts` is the single definition of
 prompt, and both `ask()` (streaming) and the eval (blocking) finish it — no second copy to drift.
 
 **Slice 3 status — full-channel ingest:** `youtubeLoader.discover()` enumerates a channel's
-uploads from the public RSS feed (UC id / @handle / URL, no API key), `ingestChannel()` runs the
-idempotent per-video pipeline with bounded concurrency and per-video error isolation, and a
-**Whisper fallback** (AI SDK `transcribe` via the Gateway) transcribes caption-less videos when
-`WHISPER_FALLBACK` is on. `pnpm ingest --channel <ref> [--limit N]`.
+*entire* upload list via `youtubei.js` (Innertube, no API key; the public RSS feed only exposes
+the newest ~15, which cannot deliver "the whole catalog"). A channel ref is a UC id, `@handle`,
+channel URL, or any video URL (resolved to its owner). `ingestChannel()` runs the idempotent,
+source-agnostic `ingestSource()` per video with bounded concurrency and per-video error isolation,
+and a **Whisper fallback** (AI SDK `transcribe` via the Gateway) transcribes caption-less videos
+when `WHISPER_FALLBACK` is on. Transcript provenance is persisted in `source.metadata`; a
+Whisper-transcribed video is final (audio doesn't change) and is skipped before any load on
+re-runs. `pnpm ingest --channel <ref> [--limit N]`.
 
 ---
 
@@ -112,14 +116,16 @@ but store `text` and `context_text` **separately** so lexical search + display u
 ### a) Ingestion seam — source-agnostic (books = a new loader, not a rewrite)
 ```ts
 interface SourceLoader {
-  discover(): AsyncIterable<SourceRef>;              // channel -> videos
-  loadSegments(ref: SourceRef): Promise<Segment[]>; // transcript (drives the idempotency hash)
-  loadMeta(ref: SourceRef): Promise<SourceMeta>;    // title/url/author, fetched only on write
+  discover(scope: string, opts?: { limit?: number }): AsyncIterable<SourceRef>; // channel -> videos
+  loadTranscript(ref: SourceRef): Promise<Transcript>; // expensive; drives the idempotency hash
+  loadMeta(ref: SourceRef): Promise<SourceMeta>;       // title/url/author, fetched only on write
 }
 type Segment = { text: string; startSec?: number; endSec?: number };
+type Transcript = { segments: Segment[]; provenance: "captions" | "whisper" };
 ```
-The sync orchestrator (80%) turns `segments -> chunks -> context -> embed -> upsert`,
-idempotently via `content_hash`.
+The sync orchestrator (80%), `ingestSource(ref, loader)`, turns `segments -> chunks -> context ->
+embed -> upsert`, idempotently via `content_hash` (and skips Whisper-provenance sources before
+loading anything). It never names a source kind; `ingestVideo()` is the thin YouTube wrapper.
 
 ### b) Retrieval — one contract; hybrid+RRF+rerank hidden inside
 ```ts

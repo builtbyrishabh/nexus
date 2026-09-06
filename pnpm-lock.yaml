@@ -16,10 +16,10 @@ importers:
         version: 4.16.12
       '@mastra/core':
         specifier: ^1.64.0
-        version: 1.64.0(ai@7.0.92(zod@3.25.76))(zod@3.25.76)
+        version: 1.64.0(@bufbuild/protobuf@2.14.1)(ai@7.0.92(zod@3.25.76))(zod@3.25.76)
       '@mastra/evals':
         specifier: ^1.10.0
-        version: 1.10.0(@mastra/core@1.64.0(ai@7.0.92(zod@3.25.76))(zod@3.25.76))(vitest@5.0.0(@types/node@20.19.43)(vite@8.2.2(@types/node@20.19.43)(esbuild@0.19.12)(jiti@2.7.0)(tsx@4.23.13)))
+        version: 1.10.0(@mastra/core@1.64.0(@bufbuild/protobuf@2.14.1)(ai@7.0.92(zod@3.25.76))(zod@3.25.76))(vitest@5.0.0(@types/node@20.19.43)(vite@8.2.2(@types/node@20.19.43)(esbuild@0.19.12)(jiti@2.7.0)(tsx@4.23.13)))
       '@t3-oss/env-nextjs':
         specifier: ^0.12.0
         version: 0.12.0(typescript@5.9.3)(zod@3.25.76)
@@ -65,6 +65,9 @@ importers:
       youtube-transcript:
         specifier: ^1.3.1
         version: 1.3.1
+      youtubei.js:
+        specifier: ^18.0.0
+        version: 18.0.0
       zod:
         specifier: ^3.24.2
         version: 3.25.76
@@ -190,6 +193,9 @@ packages:
   '@alloc/quick-lru@5.3.0':
     resolution: {integrity: sha512-U4+70Pc5ZS9osnCBCE5Jha/ciHM+Yp+CNMNC/7HvYbNRk1Ldd+f7qO65W5qfhu/TCv+/ozljlXXe9Nj8419DMA==}
     engines: {node: '>=10'}
+
+  '@bufbuild/protobuf@2.14.1':
+    resolution: {integrity: sha512-agRJn3+EJDUe8AvxTx/LnHA/GErvLE62pSaSk7+MwFOtOv8eWBu/qCq2qoZjBjVZ3C2aiFJCveuSs17KMkYGOw==}
 
   '@distube/ytdl-core@4.16.12':
     resolution: {integrity: sha512-/NR8Jur1Q4E2oD+DJta7uwWu7SkqdEkhwERt7f4iune70zg7ZlLLTOHs1+jgg3uD2jQjpdk7RGC16FqstG4RsA==}
@@ -1502,6 +1508,9 @@ packages:
       picomatch:
         optional: true
 
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
+
   figures@6.1.0:
     resolution: {integrity: sha512-d+l3qxjSesT4V7v2fh+QnmFnUWv9lSpjarhShNTgBOfA0ttejbQUAlHLitbjkoRiDulW0OPoQPYIGhIC8ohejg==}
     engines: {node: '>=18'}
@@ -1810,6 +1819,10 @@ packages:
 
   mdast-util-to-string@4.0.0:
     resolution: {integrity: sha512-0H44vDimn51F0YwvxSJSm0eCDOJTRlmN0R1yBh4HLj9wiV1Dn0QoXGbvFAWj2hSItVTlCmBF1hqKlIyUBVFLPg==}
+
+  meriyah@7.3.3:
+    resolution: {integrity: sha512-uE5cnoNj+UYhoMdZDuymCzr5TzEuE3ZF2C4kn6Z76rLhkwnvZ/+6dUZnM41T3fifyuhW0+n8vK7eq6DKJxUfPA==}
+    engines: {node: '>=20.0.0'}
 
   micromark-core-commonmark@2.0.3:
     resolution: {integrity: sha512-RDBrHEMSxVFLg6xvnXmb1Ayr2WzLAWjeSATAoxwKYJV94TeNavgoIdA0a9ytzDSVzBy2YKFK+emCPOEibLeCrg==}
@@ -2353,6 +2366,9 @@ packages:
     resolution: {integrity: sha512-NDCjwad113TGybbYF51y9Z4tcwzBHUZWQdF9veULNca18L+FdDbHHtTHIr69WVa3bB90l67S8kN0HtL2JO9fhg==}
     engines: {node: '>=18.0.0'}
 
+  youtubei.js@18.0.0:
+    resolution: {integrity: sha512-7Tztl5QzNL4nIhiAxa4P/0C8cDDsUe0j4iaUeNiaA+ZfSe/l+HkHxXyoWlQXNW7IPi2n6AW23ysVMJLDh+AwWQ==}
+
   zod-from-json-schema@0.5.6:
     resolution: {integrity: sha512-U33AJ7ZWS6y9XNSzMWcdy8hRAvZmWhTtpYJu0SXPT5AArbc9nq2ur7Magzmn5RF9KBV4b3FP0nCpmqqlfXlR9w==}
 
@@ -2367,14 +2383,18 @@ packages:
 
 snapshots:
 
-  '@a2a-js/sdk@0.3.14':
+  '@a2a-js/sdk@0.3.14(@bufbuild/protobuf@2.14.1)':
     dependencies:
       uuid: 11.1.1
+    optionalDependencies:
+      '@bufbuild/protobuf': 2.14.1
 
-  '@a2a-js/sdk@1.0.1':
+  '@a2a-js/sdk@1.0.1(@bufbuild/protobuf@2.14.1)':
     dependencies:
       jose: 6.2.10
       uuid: 11.1.1
+    optionalDependencies:
+      '@bufbuild/protobuf': 2.14.1
 
   '@ai-sdk/gateway@4.0.74(zod@3.25.76)':
     dependencies:
@@ -2444,6 +2464,8 @@ snapshots:
       - zod
 
   '@alloc/quick-lru@5.3.0': {}
+
+  '@bufbuild/protobuf@2.14.1': {}
 
   '@distube/ytdl-core@4.16.12':
     dependencies:
@@ -2821,10 +2843,10 @@ snapshots:
     dependencies:
       '@lukeed/csprng': 1.1.0
 
-  '@mastra/core@1.64.0(ai@7.0.92(zod@3.25.76))(zod@3.25.76)':
+  '@mastra/core@1.64.0(@bufbuild/protobuf@2.14.1)(ai@7.0.92(zod@3.25.76))(zod@3.25.76)':
     dependencies:
-      '@a2a-js/sdk-v0_3': '@a2a-js/sdk@0.3.14'
-      '@a2a-js/sdk-v1': '@a2a-js/sdk@1.0.1'
+      '@a2a-js/sdk-v0_3': '@a2a-js/sdk@0.3.14(@bufbuild/protobuf@2.14.1)'
+      '@a2a-js/sdk-v1': '@a2a-js/sdk@1.0.1(@bufbuild/protobuf@2.14.1)'
       '@ai-sdk/provider-utils-v6': '@ai-sdk/provider-utils@4.0.40(zod@3.25.76)'
       '@ai-sdk/provider-utils-v7': '@ai-sdk/provider-utils@5.0.13(zod@3.25.76)'
       '@ai-sdk/provider-v5': '@ai-sdk/provider@2.0.3'
@@ -2866,9 +2888,9 @@ snapshots:
       - utf-8-validate
       - workflow
 
-  '@mastra/evals@1.10.0(@mastra/core@1.64.0(ai@7.0.92(zod@3.25.76))(zod@3.25.76))(vitest@5.0.0(@types/node@20.19.43)(vite@8.2.2(@types/node@20.19.43)(esbuild@0.19.12)(jiti@2.7.0)(tsx@4.23.13)))':
+  '@mastra/evals@1.10.0(@mastra/core@1.64.0(@bufbuild/protobuf@2.14.1)(ai@7.0.92(zod@3.25.76))(zod@3.25.76))(vitest@5.0.0(@types/node@20.19.43)(vite@8.2.2(@types/node@20.19.43)(esbuild@0.19.12)(jiti@2.7.0)(tsx@4.23.13)))':
     dependencies:
-      '@mastra/core': 1.64.0(ai@7.0.92(zod@3.25.76))(zod@3.25.76)
+      '@mastra/core': 1.64.0(@bufbuild/protobuf@2.14.1)(ai@7.0.92(zod@3.25.76))(zod@3.25.76)
       compromise: 14.16.0
       keyword-extractor: 0.0.28
       sentiment: 5.0.2
@@ -3395,6 +3417,8 @@ snapshots:
     optionalDependencies:
       picomatch: 4.0.7
 
+  fflate@0.8.3: {}
+
   figures@6.1.0:
     dependencies:
       is-unicode-supported: 2.1.0
@@ -3706,6 +3730,8 @@ snapshots:
   mdast-util-to-string@4.0.0:
     dependencies:
       '@types/mdast': 4.0.4
+
+  meriyah@7.3.3: {}
 
   micromark-core-commonmark@2.0.3:
     dependencies:
@@ -4281,6 +4307,12 @@ snapshots:
   yoctocolors@2.2.0: {}
 
   youtube-transcript@1.3.1: {}
+
+  youtubei.js@18.0.0:
+    dependencies:
+      '@bufbuild/protobuf': 2.14.1
+      fflate: 0.8.3
+      meriyah: 7.3.3
 
   zod-from-json-schema@0.5.6:
     dependencies:

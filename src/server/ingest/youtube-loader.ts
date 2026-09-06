@@ -4,73 +4,29 @@ import {
   YoutubeTranscriptNotAvailableError,
   YoutubeTranscriptNotAvailableLanguageError,
 } from "youtube-transcript";
+import { Innertube } from "youtubei.js";
 
 import { env } from "~/env";
-import type { Segment, SourceMeta, SourceRef } from "~/server/domain/types";
+import type {
+  Segment,
+  SourceLoader,
+  SourceMeta,
+  SourceRef,
+  Transcript,
+} from "~/server/domain/types";
 import { transcribeWithWhisper } from "~/server/ingest/whisper";
+import {
+  channelIdFromUrl,
+  channelUrl,
+  isChannelId,
+  isVideoId,
+  tryVideoId,
+  watchUrl,
+} from "~/server/ingest/youtube-url";
 
 type OEmbed = { title?: string; author_name?: string };
 
-// One rule per identity, written once. A YouTube video id is 11 URL-safe base64 chars; a channel
-// id is "UC" + 22 of them. Every regex that needs either is built from these fragments so the
-// pattern can never drift between the four places that used to hand-roll it.
-const VIDEO_ID = "[A-Za-z0-9_-]{11}";
-const VIDEO_ID_RE = new RegExp(`^${VIDEO_ID}$`);
-const VIDEO_PATH_RE = new RegExp(`^/(?:embed|shorts|live|v)/(${VIDEO_ID})`);
-const FEED_VIDEO_ID_RE = new RegExp(`<yt:videoId>(${VIDEO_ID})</yt:videoId>`, "g");
-
-const CHANNEL_ID = "UC[A-Za-z0-9_-]{22}";
-const CHANNEL_ID_RE = new RegExp(`^${CHANNEL_ID}$`);
-const CHANNEL_URL_RE = new RegExp(`channel/(${CHANNEL_ID})`);
-const CHANNEL_JSON_RE = new RegExp(`"channelId":"(${CHANNEL_ID})"`);
-
 type TranscriptEntry = { text: string; offset: number; duration: number };
-
-/** True iff `v` is a bare 11-char YouTube video id. The single owner of "is this a video id?". */
-export function isVideoId(v: string | null | undefined): v is string {
-  return !!v && VIDEO_ID_RE.test(v);
-}
-
-/** The canonical watch URL for a video id. The stored citation URL and every request URL that
- * points at a video are built from this one helper so they stay in lockstep. */
-export function watchUrl(videoId: string): string {
-  return `https://www.youtube.com/watch?v=${videoId}`;
-}
-
-/**
- * Canonicalize any accepted YouTube input to its 11-character video ID. The rest of Nexus
- * (DB identity, oEmbed lookup, citation deep-links) keys off this single canonical form, so a
- * bare ID, a `watch?v=` URL, and a `youtu.be` short URL all resolve to one source. Anything
- * that isn't recognizably a YouTube video is rejected here rather than silently persisted.
- */
-export function toVideoId(input: string): string {
-  const raw = input.trim();
-
-  // Bare video ID (YouTube IDs are 11 chars of the URL-safe base64 alphabet).
-  if (isVideoId(raw)) return raw;
-
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new Error(`Not a YouTube video ID or URL: ${input}`);
-  }
-
-  const host = url.hostname.replace(/^www\./, "");
-
-  if (host === "youtu.be") {
-    const id = url.pathname.slice(1).split("/")[0];
-    if (isVideoId(id)) return id;
-  } else if (host === "youtube.com" || host === "m.youtube.com") {
-    const v = url.searchParams.get("v");
-    if (isVideoId(v)) return v;
-    // /embed/<id>, /shorts/<id>, /live/<id>, /v/<id>
-    const m = VIDEO_PATH_RE.exec(url.pathname);
-    if (isVideoId(m?.[1])) return m[1];
-  }
-
-  throw new Error(`Could not extract a YouTube video ID from: ${input}`);
-}
 
 /**
  * The youtube-transcript library reports offset/duration in milliseconds on its primary (srv3)
@@ -88,7 +44,7 @@ export function toVideoId(input: string): string {
 export function toSeconds(transcript: TranscriptEntry[]): Segment[] {
   const durations = transcript
     .map((t) => t.duration)
-    .filter((d) => d > 0)
+    .filter((d) => Number.isFinite(d) && d > 0)
     .sort((a, b) => a - b);
   const median = durations.length
     ? durations[Math.floor(durations.length / 2)]!
@@ -105,60 +61,83 @@ export function toSeconds(transcript: TranscriptEntry[]): Segment[] {
 }
 
 /**
- * Pull a channel id out of a channel page's HTML. YouTube stamps it in several places; the
- * inline `"channelId":"UC…"` in the bootstrap JSON is the most reliable, with the canonical
- * `/channel/UC…` link as a fallback. Pure so it can be tested against a saved page fixture.
- *
- * Note: on a *watch* page the bootstrap JSON can list other channels' ids before the owner's, so
- * pass a channel ref (UC id / @handle / channel URL) rather than a video URL for a reliable result.
+ * One Innertube session per process, created lazily. `Innertube.create()` is a network round trip
+ * (client config), so every discover/resolve call shares it rather than paying it again.
  */
-export function extractChannelId(html: string): string | undefined {
-  const json = CHANNEL_JSON_RE.exec(html);
-  if (json) return json[1];
-  const canonical = CHANNEL_URL_RE.exec(html);
-  return canonical?.[1];
+let innertubeP: Promise<Innertube> | undefined;
+function innertube(): Promise<Innertube> {
+  return (innertubeP ??= Innertube.create());
 }
 
 /**
- * Video ids from a channel uploads RSS feed, in feed order (newest first). The feed lists each
- * upload as `<yt:videoId>…</yt:videoId>`; we take those directly. Pure — tested against a feed
- * fixture. (The public feed carries the ~15 most recent uploads.)
- */
-export function parseUploadsFeed(xml: string): string[] {
-  const ids: string[] = [];
-  const re = new RegExp(FEED_VIDEO_ID_RE);
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(xml)) !== null) ids.push(m[1]!);
-  return ids;
-}
-
-/** The channel URL to fetch for a channel id, `@handle`, bare handle, or full URL. */
-export function channelUrl(input: string): string {
-  const raw = input.trim();
-  if (CHANNEL_ID_RE.test(raw)) return `https://www.youtube.com/channel/${raw}`;
-  if (/^https?:\/\//.test(raw)) return raw;
-  return `https://www.youtube.com/${raw.startsWith("@") ? raw : `@${raw}`}`;
-}
-
-/**
- * Resolve any channel reference (UC id, @handle, bare handle, or channel/video URL) to its UC
- * channel id — no API key needed. A UC id or a URL that already contains one short-circuits;
- * otherwise we fetch the page and read it out of the HTML.
+ * Resolve any channel reference — UC id, `@handle`, bare handle, channel URL (incl. legacy `/c/`),
+ * or any video URL/id — to its UC channel id. No API key: a UC id or a `/channel/` URL is read
+ * directly; a video resolves to its owner via the video's own info (the watch-page scrape this
+ * replaced could return another channel's id); everything else goes through Innertube's URL
+ * resolver, which is what the YouTube client itself uses.
  */
 export async function resolveChannelId(input: string): Promise<string> {
   const raw = input.trim();
-  if (CHANNEL_ID_RE.test(raw)) return raw;
-  const inUrl = CHANNEL_URL_RE.exec(raw);
-  if (inUrl) return inUrl[1]!;
+  if (isChannelId(raw)) return raw;
+  const inUrl = channelIdFromUrl(raw);
+  if (inUrl) return inUrl;
 
-  const res = await fetch(channelUrl(raw), {
-    headers: { "accept-language": "en" },
-  });
-  if (!res.ok)
-    throw new Error(`Could not fetch channel page for "${input}" (${res.status})`);
-  const id = extractChannelId(await res.text());
-  if (!id) throw new Error(`Could not resolve a channel id from: ${input}`);
+  const yt = await innertube();
+
+  const videoId = tryVideoId(raw);
+  if (videoId) {
+    const id = (await yt.getBasicInfo(videoId)).basic_info.channel_id;
+    if (!id || !isChannelId(id))
+      throw new Error(`Could not resolve the channel of video ${videoId}`);
+    return id;
+  }
+
+  const nav = await yt.resolveURL(channelUrl(raw));
+  const id = nav.payload?.browseId as unknown;
+  if (typeof id !== "string" || !isChannelId(id))
+    throw new Error(`Could not resolve a channel id from: ${input}`);
   return id;
+}
+
+/** A page of a channel's Videos tab, whatever concrete Innertube class it comes back as. */
+type VideoPage = {
+  videos: readonly object[];
+  has_continuation: boolean;
+  getContinuation(): Promise<VideoPage>;
+};
+
+/** The video id off a Videos-tab item. Innertube has shipped two item shapes; accept both. */
+function itemVideoId(item: object): string | undefined {
+  const rec = item as { content_id?: unknown; id?: unknown };
+  const id = rec.content_id ?? rec.id;
+  return isVideoId(id as string) ? (id as string) : undefined;
+}
+
+/**
+ * Every upload of a channel, newest first, paged through Innertube continuations until the tab is
+ * exhausted (or `limit` is reached — the caller's cap, so an N-video run pays for N, not the whole
+ * catalog). This is the "entire catalog" the product contract needs; the public RSS feed, which
+ * would be simpler, stops at the newest ~15.
+ */
+async function* listUploads(
+  channelId: string,
+  limit?: number,
+): AsyncGenerator<string> {
+  const yt = await innertube();
+  const channel = await yt.getChannel(channelId);
+  let page: VideoPage = await channel.getVideos();
+  let yielded = 0;
+
+  while (true) {
+    for (const item of page.videos) {
+      const id = itemVideoId(item);
+      if (!id) continue;
+      yield id;
+      if (limit !== undefined && ++yielded >= limit) return;
+    }
+    if (!page.has_continuation) return;
+    page = await page.getContinuation();
+  }
 }
 
 /**
@@ -208,14 +187,15 @@ async function fetchTranscript(videoId: string) {
 /**
  * Get a video's timestamped segments, preferring the (free, instant) caption track and falling
  * back to Whisper only when there is genuinely no caption track AND the fallback is enabled. The
- * two sources converge on the same `Segment[]`, so the pipeline doesn't care which one answered.
+ * two sources converge on the same `Segment[]`; the provenance travels with them so the pipeline
+ * can persist it and never re-transcribe.
  *
  * "No caption track" is precise: the library's Disabled/NotAvailable errors, or a caption body
  * that parses to zero segments. Transient/terminal errors (rate limit, video unavailable, network)
  * are re-thrown — routing them to Whisper would fan a single YouTube rate-limit out into N paid
- * STT calls, and Whisper text ≠ caption text would re-hash and re-embed the whole corpus next run.
+ * STT calls.
  */
-async function loadSegments(videoId: string): Promise<Segment[]> {
+async function loadTranscript(videoId: string): Promise<Transcript> {
   let segments: Segment[] = [];
   try {
     segments = toSeconds(await fetchTranscript(videoId));
@@ -223,42 +203,41 @@ async function loadSegments(videoId: string): Promise<Segment[]> {
     if (!isNoCaptionsError(err)) throw err;
   }
 
-  if (segments.length > 0) return segments;
+  if (segments.length > 0) return { segments, provenance: "captions" };
 
   // Genuinely no captions.
-  if (env.WHISPER_FALLBACK) return transcribeWithWhisper(videoId);
+  if (env.WHISPER_FALLBACK) {
+    return { segments: await transcribeWithWhisper(videoId), provenance: "whisper" };
+  }
   throw new Error(`No caption track for video ${videoId} (WHISPER_FALLBACK is off)`);
 }
 
 /**
- * SourceLoader for YouTube. Source-agnostic seam (docs/DESIGN.md §4a): `discover()` enumerates a
- * channel's uploads; `loadSegments()` fetches one video's transcript and `loadMeta()` its title
- * (kept separate so an idempotent re-run can decide "unchanged" from the transcript hash without
- * paying the metadata request). Adding a new source (books) is a new loader behind this same shape.
+ * SourceLoader for YouTube (docs/DESIGN.md §4a). `discover()` enumerates a channel's uploads;
+ * `loadTranscript()` fetches one video's transcript and `loadMeta()` its title (kept separate so
+ * an idempotent re-run can decide "unchanged" from the transcript hash without paying the metadata
+ * request). Adding a new source (books) is a new loader behind this same shape.
  */
 export const youtubeLoader = {
   /**
-   * Enumerate a channel's uploads as SourceRefs from the public uploads RSS feed — no API key.
-   * `channel` accepts a UC id, an `@handle`, a bare handle, or a channel/video URL.
+   * Enumerate a channel's uploads as SourceRefs, newest first, through to the end of the catalog
+   * (or `limit`). `scope` accepts a UC id, an `@handle`, a bare handle, a channel URL, or any
+   * video URL/id (resolved to its owner).
    */
-  async *discover(channel: string): AsyncIterable<SourceRef> {
-    const channelId = await resolveChannelId(channel);
-    const res = await fetch(
-      `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`,
-    );
-    if (!res.ok)
-      throw new Error(
-        `Could not fetch uploads feed for ${channelId} (${res.status})`,
-      );
-    for (const externalId of parseUploadsFeed(await res.text())) {
+  async *discover(
+    scope: string,
+    opts?: { limit?: number },
+  ): AsyncIterable<SourceRef> {
+    const channelId = await resolveChannelId(scope);
+    for await (const externalId of listUploads(channelId, opts?.limit)) {
       yield { kind: "youtube_video", externalId };
     }
   },
 
-  /** The transcript segments for one video. `ref.externalId` is canonical (the pipeline owns
+  /** The transcript for one video. `ref.externalId` is canonical (the pipeline owns
    * `toVideoId`), so the loader trusts it rather than re-normalizing the same value twice. */
-  loadSegments(ref: SourceRef): Promise<Segment[]> {
-    return loadSegments(ref.externalId);
+  loadTranscript(ref: SourceRef): Promise<Transcript> {
+    return loadTranscript(ref.externalId);
   },
 
   /** Title/author/URL for one video. Fetched only when the pipeline has decided to write. */
@@ -272,4 +251,4 @@ export const youtubeLoader = {
       author: meta.author,
     };
   },
-};
+} satisfies SourceLoader;

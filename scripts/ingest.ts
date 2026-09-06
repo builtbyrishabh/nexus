@@ -12,8 +12,8 @@ function usage(): never {
     [
       "Usage:",
       "  pnpm ingest [<videoIdOrUrl>]            ingest one video (default: stand-in)",
-      "  pnpm ingest --channel <ref> [--limit N] ingest a channel's recent uploads",
-      "                                          <ref> = UC id | @handle | channel/video URL",
+      "  pnpm ingest --channel <ref> [--limit N] ingest a channel's uploads (all, or newest N)",
+      "                                          <ref> = UC id | @handle | channel URL | any video URL",
     ].join("\n"),
   );
   process.exit(1);

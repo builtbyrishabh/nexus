@@ -1,5 +1,5 @@
 import type { SourceRef } from "~/server/domain/types";
-import { ingestVideo } from "~/server/ingest/pipeline";
+import { ingestSource } from "~/server/ingest/pipeline";
 import { youtubeLoader } from "~/server/ingest/youtube-loader";
 import { mapPool } from "~/server/util/pool";
 
@@ -20,11 +20,12 @@ export type ChannelIngestResult = {
 };
 
 /**
- * Ingest a whole channel: discover its uploads, then ingest each video with bounded concurrency,
- * reusing the same idempotent `ingestVideo` (unchanged transcripts are skipped, so re-runs are
- * cheap). One caption-less or malformed video fails in isolation and is reported — it never sinks
- * the batch. Outcomes come back in discovery order regardless of finish order (mapPool preserves
- * position), so a resumed/partial run reads cleanly.
+ * Ingest a whole channel: discover its uploads (all of them, unless `limit` is set), then ingest
+ * each video with bounded concurrency through the same idempotent `ingestSource` (unchanged
+ * transcripts and Whisper-transcribed videos are skipped, so re-runs are cheap). One caption-less
+ * or malformed video fails in isolation and is reported — it never sinks the batch. Outcomes come
+ * back in discovery order regardless of finish order (mapPool preserves position), so a
+ * resumed/partial run reads cleanly.
  */
 export async function ingestChannel(
   channel: string,
@@ -35,9 +36,8 @@ export async function ingestChannel(
   },
 ): Promise<ChannelIngestResult> {
   const refs: SourceRef[] = [];
-  for await (const ref of youtubeLoader.discover(channel)) {
+  for await (const ref of youtubeLoader.discover(channel, { limit: opts?.limit })) {
     refs.push(ref);
-    if (opts?.limit && refs.length >= opts.limit) break;
   }
 
   const outcomes = await mapPool(
@@ -46,7 +46,7 @@ export async function ingestChannel(
     async (ref): Promise<VideoOutcome> => {
       // Build the outcome once — success or failure — then report it once, so any future change to
       // reporting (timing, a second callback) lives in one place instead of two mirrored branches.
-      const outcome: VideoOutcome = await ingestVideo(ref.externalId).then(
+      const outcome: VideoOutcome = await ingestSource(ref, youtubeLoader).then(
         (r) => ({
           videoId: ref.externalId,
           status: r.skipped ? "skipped" : "ingested",

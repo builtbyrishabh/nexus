@@ -22,17 +22,33 @@ export type SourceMeta = {
   publishedAt?: Date;
 };
 
-/** A reference a loader can `load()` — e.g. one video in a channel. */
+/** A reference a loader can load — e.g. one video in a channel. */
 export type SourceRef = {
   kind: SourceKind;
   externalId: string;
 };
 
-/** What a loader returns: metadata + the raw (timestamped) segments. */
-export type LoadedSource = {
-  source: SourceMeta;
+/** Where a transcript came from. Persisted on the source row: it drives idempotency (a Whisper
+ * transcript is never re-fetched — the audio doesn't change) and is useful provenance on its own. */
+export type TranscriptProvenance = "captions" | "whisper";
+
+/** A source's raw timestamped segments plus where they came from. */
+export type Transcript = {
   segments: Segment[];
+  provenance: TranscriptProvenance;
 };
+
+/**
+ * The ingestion seam (docs/DESIGN.md §4a). Source-agnostic on purpose: books are a new loader
+ * behind this same shape, not a change to the orchestrator. `discover` enumerates a scope (a
+ * channel today); `loadTranscript` is the expensive call that drives the idempotency hash;
+ * `loadMeta` is fetched only once the pipeline has decided to write.
+ */
+export interface SourceLoader {
+  discover(scope: string, opts?: { limit?: number }): AsyncIterable<SourceRef>;
+  loadTranscript(ref: SourceRef): Promise<Transcript>;
+  loadMeta(ref: SourceRef): Promise<SourceMeta>;
+}
 
 /** Where in the source — powers deep-links. */
 export type Locator = {
