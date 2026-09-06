@@ -1,5 +1,6 @@
 import { isRefusal, REFUSAL_TEXT } from "~/server/answer";
 import { prepareAnswer } from "~/server/ask";
+import { evidenceText, evidenceToCitations } from "~/server/domain/citations";
 import { GOLDEN_SET, validateGolden, type GoldenCase } from "~/server/evals/golden";
 import { scoreAnswer } from "~/server/evals/score";
 import { summarize, type CaseResult, type EvalSummary } from "~/server/evals/summary";
@@ -39,10 +40,17 @@ async function runCase(c: GoldenCase, rerank: boolean): Promise<CaseResult> {
       : await scoreAnswer({
           query: c.query,
           answer,
-          contextTexts: evidence.map((e) => e.text),
+          contextTexts: evidence.map(evidenceText),
         });
 
-  return { id: c.id, expectRefusal: !!c.expectRefusal, refused, scores };
+  return {
+    id: c.id,
+    expectRefusal: !!c.expectRefusal,
+    refused,
+    scores,
+    answer,
+    citations: evidenceToCitations(evidence).citations,
+  };
 }
 
 /**

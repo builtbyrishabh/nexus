@@ -51,6 +51,15 @@ export function evidenceToCitations(evidence: Evidence[]): {
   return { citations, sources: [...seen.values()] };
 }
 
+/**
+ * What the model reads for one evidence entry: the situating blurb (when present) above the
+ * verbatim transcript. The eval judges grade against this same string, so "faithful to the
+ * evidence" means faithful to exactly what the model was shown.
+ */
+export function evidenceText(e: Evidence): string {
+  return e.context ? `Context: ${e.context}\n${e.text}` : e.text;
+}
+
 /** Numbered, model-facing evidence packet. Marker `[n]` must map to entry `n`. */
 export function buildEvidencePacket(evidence: Evidence[]): string {
   return evidence
@@ -59,7 +68,7 @@ export function buildEvidencePacket(evidence: Evidence[]): string {
         e.locator?.startSec === undefined
           ? ""
           : ` (at ${formatTimestamp(e.locator.startSec)})`;
-      return `[${i + 1}] ${e.source.title}${ts}\n${e.text}`;
+      return `[${i + 1}] ${e.source.title}${ts}\n${evidenceText(e)}`;
     })
     .join("\n\n");
 }

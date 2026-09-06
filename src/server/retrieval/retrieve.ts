@@ -25,11 +25,19 @@ type HydratedRow = {
   source_id: string;
   chunk_index: number;
   text: string;
+  context_text: string;
   start_sec: number | null;
   end_sec: number | null;
   title: string;
   url: string;
 };
+
+/**
+ * Bind a JS array as ONE Postgres array parameter. Drizzle's `sql` template expands a bare array
+ * into `($1, $2, …)` — a row value, not an array — so `ANY(${ids}::uuid[])` fails with "cannot cast
+ * type record to uuid[]". `sql.param` sends the array itself, which postgres-js serializes natively.
+ */
+const uuidArray = (ids: string[]): SQL => sql`${sql.param(ids)}::uuid[]`;
 
 /**
  * Public boundary → parameterized only. `Filter` values arrive from callers, so every id/kind
@@ -41,7 +49,7 @@ function filterConditions(filter?: Filter): SQL[] {
   const conditions: SQL[] = [];
   const sourceIds = filter?.sourceIds;
   if (sourceIds && sourceIds.length > 0) {
-    conditions.push(sql`c.source_id = ANY(${sourceIds}::uuid[])`);
+    conditions.push(sql`c.source_id = ANY(${uuidArray(sourceIds)})`);
   }
   if (filter?.kind) conditions.push(sql`s.kind = ${filter.kind}`);
   return conditions;
@@ -95,13 +103,14 @@ async function hydrate(ids: string[]): Promise<Map<string, HydratedRow>> {
       c.source_id AS source_id,
       c.chunk_index AS chunk_index,
       c.text AS text,
+      c.context_text AS context_text,
       c.start_sec AS start_sec,
       c.end_sec AS end_sec,
       s.title AS title,
       s.url AS url
     FROM ${chunk} c
     JOIN ${source} s ON s.id = c.source_id
-    WHERE c.id = ANY(${ids}::uuid[])
+    WHERE c.id = ANY(${uuidArray(ids)})
   `)) as unknown as HydratedRow[];
 
   return new Map(rows.map((r) => [r.chunk_id, r]));
@@ -113,6 +122,7 @@ function toEvidence(row: HydratedRow, score: number, text: string): Evidence {
     chunkId: row.chunk_id,
     sourceId: row.source_id,
     text,
+    context: row.context_text || undefined,
     score,
     locator:
       row.start_sec === null
@@ -215,10 +225,13 @@ export async function retrieve(
   // A caller that asked for `rerank: true` explicitly (the eval measuring its lift) gets the
   // error instead: silently grading the baseline as "rerank on" would report a lift that was
   // never measured.
+  // The reranker scores the same `context + "\n" + text` string that was embedded (the locked
+  // storage rule): the blurb is what ties "Caleb's 90-day results" to a chunk that only says
+  // "so what is it now?". Measured on raw text alone it promoted intro chunks and lost every axis.
   const ranked: { id: string; score: number }[] = useRerank
     ? await rerankDocuments(
         query,
-        pool.map((p) => ({ id: p.id, text: p.row.text })),
+        pool.map((p) => ({ id: p.id, text: `${p.row.context_text}\n${p.row.text}` })),
         topK,
       ).catch((err: unknown) => {
         if (rerankExplicit) throw err;

@@ -1,13 +1,14 @@
 import "./_env";
 
 import { runEvalSuite } from "~/server/evals/run";
-import { AXES, type EvalSummary } from "~/server/evals/summary";
+import { AXES, type CaseResult, type EvalSummary } from "~/server/evals/summary";
 
 /**
  * Run the golden-set evals. Three modes:
  *   pnpm eval            → baseline retrieval (rerank off), gates via exit code
  *   pnpm eval --rerank   → rerank on, gates via exit code
  *   pnpm eval --compare  → run both and print the rerank lift (informational; always exits 0)
+ * Add --verbose to any mode to print each case: decision, per-axis scores, citations, answer.
  *
  * The gate (nonzero exit on failure) is what makes "don't advance a tier until its evals pass"
  * enforceable in CI, not just aspirational.
@@ -25,6 +26,21 @@ function printSummary(label: string, s: EvalSummary): void {
   console.log(`  graded ${s.scored}/${s.total} · ${s.passed ? "PASS ✓" : `FAIL ✗ (${s.failures.join(", ")})`}`);
 }
 
+function printCases(label: string, results: CaseResult[]): void {
+  console.log(`\n${label} — per case`);
+  for (const r of results) {
+    const decision = r.expectRefusal
+      ? r.refused ? "refused ✓" : "ANSWERED ✗ (expected refusal)"
+      : r.refused ? "REFUSED ✗ (expected answer)" : "answered ✓";
+    const scores = r.scores
+      ? AXES.map((a) => `${a.label.split(" ").pop()}=${r.scores![a.key].toFixed(2)}`).join(" ")
+      : "";
+    console.log(`\n▸ ${r.id} · ${decision} ${scores}`);
+    for (const c of r.citations ?? []) console.log(`    [${c.timestamp ?? "—"}] ${c.sourceTitle}`);
+    console.log(`  ${(r.answer ?? "").replace(/\n+/g, "\n  ")}`);
+  }
+}
+
 function printLift(off: EvalSummary, on: EvalSummary): void {
   const delta = (a: number, b: number) => {
     const d = b - a;
@@ -36,6 +52,7 @@ function printLift(off: EvalSummary, on: EvalSummary): void {
 
 async function main() {
   const args = new Set(process.argv.slice(2));
+  const verbose = args.has("--verbose");
 
   if (args.has("--compare")) {
     console.log("Running golden set: rerank off vs on…");
@@ -44,6 +61,10 @@ async function main() {
     // is informational, so wall-clock is not the constraint.
     const off = await runEvalSuite({ rerank: false });
     const on = await runEvalSuite({ rerank: true });
+    if (verbose) {
+      printCases("rerank OFF", off.results);
+      printCases("rerank ON", on.results);
+    }
     printSummary("rerank OFF", off.summary);
     printSummary("rerank ON", on.summary);
     printLift(off.summary, on.summary);
@@ -52,7 +73,8 @@ async function main() {
 
   const rerank = args.has("--rerank");
   console.log(`Running golden set (rerank ${rerank ? "on" : "off"})…`);
-  const { summary } = await runEvalSuite({ rerank });
+  const { results, summary } = await runEvalSuite({ rerank });
+  if (verbose) printCases(rerank ? "rerank ON" : "baseline", results);
   printSummary(rerank ? "rerank ON" : "baseline", summary);
   process.exit(summary.passed ? 0 : 1);
 }
