@@ -1,12 +1,11 @@
-import { buildAnswerMessages, isRefusal, REFUSAL_TEXT } from "~/server/answer";
+import { isRefusal, REFUSAL_TEXT } from "~/server/answer";
+import { prepareAnswer } from "~/server/ask";
 import { GOLDEN_SET, validateGolden, type GoldenCase } from "~/server/evals/golden";
 import { scoreAnswer } from "~/server/evals/score";
 import { summarize, type CaseResult, type EvalSummary } from "~/server/evals/summary";
 import { nexusAgent } from "~/server/mastra";
-import { retrieve } from "~/server/retrieval/retrieve";
 import { mapPool } from "~/server/util/pool";
 
-const TOP_K = 5;
 const CASE_CONCURRENCY = 3;
 
 const ZERO_SCORES = {
@@ -16,9 +15,10 @@ const ZERO_SCORES = {
 } as const;
 
 /**
- * Run one golden case through the REAL query path — same retrieve() and same agent prompt that
- * `ask()` uses (via buildAnswerMessages) — so the score reflects production, not a lookalike.
- * Empty retrieval short-circuits to the refusal exactly as ask() does.
+ * Run one golden case through the REAL query path: `prepareAnswer()` is the same function `ask()`
+ * calls (same retrieve options, same refusal decision, same prompt), so the score reflects
+ * production rather than a lookalike, and whatever Tier 2 adds to the path is graded automatically.
+ * The only difference from `ask()` is the finish: a blocking generate instead of a stream.
  *
  * Grading follows the case kind, not the model's choice: expected-refusal cases carry the decision
  * only (`scores` absent); answerable cases are always scored — real judge scores when the model
@@ -26,11 +26,10 @@ const ZERO_SCORES = {
  * instead of quietly dropping out of them (see summary.ts).
  */
 async function runCase(c: GoldenCase, rerank: boolean): Promise<CaseResult> {
-  const evidence = await retrieve(c.query, { topK: TOP_K, rerank });
-  const answer =
-    evidence.length === 0
-      ? REFUSAL_TEXT
-      : (await nexusAgent.generate(buildAnswerMessages(c.query, evidence))).text;
+  const { evidence, messages } = await prepareAnswer(c.query, { rerank });
+  const answer = messages
+    ? (await nexusAgent.generate(messages)).text
+    : REFUSAL_TEXT;
 
   const refused = isRefusal(answer);
   const scores = c.expectRefusal

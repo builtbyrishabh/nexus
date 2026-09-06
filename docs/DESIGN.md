@@ -20,7 +20,9 @@ set existed (so its lift is measured, not asserted) — now delivered in Slice 2
 Context-Precision** scorers drive a harness (`pnpm eval`, gated by exit code). **Reranking**
 (AI SDK `rerank` via the Gateway) now slots into `retrieve()` between RRF fusion and neighbor
 expansion, off by default and toggled per-run so `pnpm eval --compare` reads the lift directly.
-Provider defaults to Cohere rerank-3.5 (one env knob, `RERANK_MODEL`).
+Provider defaults to Cohere rerank-3.5 (one env knob, `RERANK_MODEL`). The harness grades the real
+query path: `prepareAnswer()` in `src/server/ask.ts` is the single definition of retrieve → refuse-or-
+prompt, and both `ask()` (streaming) and the eval (blocking) finish it — no second copy to drift.
 
 **Slice 3 status — full-channel ingest:** `youtubeLoader.discover()` enumerates a channel's
 uploads from the public RSS feed (UC id / @handle / URL, no API key), `ingestChannel()` runs the
