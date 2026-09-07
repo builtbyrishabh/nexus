@@ -111,18 +111,17 @@ export const GOLDEN_SET: GoldenCase[] = [
     query: "What are the two levers in a sales motion?",
     note: "Qualification (right people show up) and education (right mindset); in-person, no downside to educating more.",
   },
-  // ── Refusals ──────────────────────────────────────────────────────────────────────────────
   {
-    id: "refuse-gym-launch",
+    id: "gym-launch-origin",
     query: "How did Alex start Gym Launch?",
-    expectRefusal: true,
-    note: "World-knowledge trap: a one-line 'my weight loss business' aside exists, but no origin story. The model must not fill it in from memory.",
+    note: "Was a world-knowledge trap on the 2-video corpus; covered since the 30-upload build — the from-stage sale in 'Reacting to My First Videos 10 Years Later' (Q8xXSMe8E4Q, 5:13).",
   },
+  // ── Refusals ──────────────────────────────────────────────────────────────────────────────
   {
     id: "refuse-hiring-cfo",
     query: "What does Alex say about when to hire a CFO?",
     expectRefusal: true,
-    note: "Near-topic: hiring associates/salespeople is discussed, a CFO never is. Must not generalize.",
+    note: "Near-miss (strict refusals, decided 2026-09-07): a 'strong finance person' aside exists (8C_6qojTA78, 34:47), a CFO never does. Must refuse, not answer the nearest question.",
   },
   {
     id: "refuse-bitcoin",

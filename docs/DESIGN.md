@@ -19,7 +19,8 @@ set existed (so its lift is measured, not asserted) — now delivered in Slice 2
 (`src/server/evals/golden.ts`) + Mastra's native **Faithfulness / Answer-Relevancy /
 Context-Precision** scorers drive a harness (`pnpm eval`, gated by exit code). **Reranking**
 (AI SDK `rerank` via the Gateway) now slots into `retrieve()` between RRF fusion and neighbor
-expansion, off by default and toggled per-run so `pnpm eval --compare` reads the lift directly.
+expansion, toggled per-run so `pnpm eval --compare` reads the lift directly; on by default since
+the 31-video measurement (Slice 3.3).
 Provider defaults to Cohere rerank-3.5 (one env knob, `RERANK_MODEL`). The harness grades the real
 query path: `prepareAnswer()` in `src/server/ask.ts` is the single definition of retrieve → refuse-or-
 prompt, and both `ask()` (streaming) and the eval (blocking) finish it — no second copy to drift.
@@ -48,6 +49,66 @@ failed`), 3 videos in flight (a constant), outcomes in discovery order, exit non
 failed *or* nothing was indexed. No retries, resume files, or job table — the gates make "run it
 again" the retry. **Gate:** ingest 60–70 Hormozi uploads (`--limit`), re-run `pnpm eval --compare`;
 done when refusal + faithfulness still pass on the larger corpus, numbers recorded here.
+
+*Measured 2026-09-07 (Slice 3.3, first pass at 30 uploads):* `pnpm ingest --channel @AlexHormozi
+--limit 30` → 28 ingested · 2 skipped · 0 failed in 6m45s; the immediate rerun → 30 skipped (unchanged),
+exit 0, 29s, no oEmbed calls. Corpus: 31 sources / 861 chunks (was 4 / 111). `pnpm eval --compare`
+on that corpus, against the 2-video numbers from Slice 2:
+
+| axis | 2 videos off / on | 31 videos off / on |
+|---|---|---|
+| faithfulness | 98.9% / 98.4% | 99.0% / 98.3% |
+| answer relevancy | 80.3% / 76.5% | 75.5% / 82.5% |
+| context precision | 93.9% / 96.5% | 91.6% / 99.5% |
+| refusal accuracy | 100% / 100% | 95.2% / 90.5% |
+
+Faithfulness holds at scale. **Rerank now earns its place:** +7.9pt precision, +7.0pt relevancy at
+31 videos (was +2.6pt / −3.8pt at 2). Both runs FAIL the gate on refusal accuracy, and both misses
+are the golden set, not retrieval: "How did Alex start Gym Launch?" was authored as a
+world-knowledge trap and is now genuinely covered (`Q8xXSMe8E4Q` 5:13, the stage sale); "when to
+hire a CFO" is answered from a "strong finance person" passage — a near-miss, i.e. the hedged-
+refusal question with real data. Manual QA: 3 fresh questions cite the right videos with working
+deep links, except one — "What is Alex's social media strategy for 2027?" never retrieves
+`ZTSI3DDP_4A` ("My Actual Social Media Strategy For 2027") with or without rerank, because the
+**title is stored on `source` but reaches neither the blurb nor the embedding**; the transcript
+itself talks about "the Algorithm". Title-only framing is invisible to retrieval.
+
+*Decided and shipped the same day (all four, user's call):* **rerank on by default**; **golden set
+repaired** (`gym-launch-origin` is answerable, `refuse-hiring-cfo` stays a refusal); **strict
+refusals** — the agent must not answer a nearby question or follow the refusal with what the
+evidence does say; **the title is fed to the context blurb**, and an `INDEX_VERSION` now rides in
+the content hash so a prompt change re-indexes on rerun (re-index of 31 videos: ~6 min, ~$0.65 at
+GLM-flash prices). The 2027 question now lands all five evidence slots on the right video. Eval on
+the re-indexed corpus, strict prompt:
+
+| axis | rerank off (3 runs) | rerank on |
+|---|---|---|
+| faithfulness | 88.3–88.9% | 98.5% |
+| answer relevancy | 69.6–72.3% | 83.2% |
+| context precision | 81.8–86.2% | 94.1% |
+| refusal accuracy | 85.7–90.5% | **100%** |
+| gate | FAIL | **PASS** |
+
+**Strict refusals need clean evidence.** With rerank off, the same two answerable questions
+(`hormozi-track-record`, `nail-it-before-scale`) are wrongly refused in all three runs — the looser
+top-5 trips the stricter rule, and a wrongful refusal scores 0 on every axis, which is what drags
+the off-column faithfulness to 88%. With rerank on every answerable case is answered — but the CFO
+near-miss was a coin flip: prompt wording alone ("a similar role is not an answer", then naming the
+"he doesn't use the term X, but…" hedge outright) still answered it in 3 of 4 runs. **The fix is
+deterministic, not prose:** reranker scores are absolute, and on this corpus they separate cleanly
+(off-topic refusals top out at 0.13, the CFO near-miss at 0.38, the weakest answerable question at
+0.53), so `rerankDocuments` now applies a relevance floor (`MIN_RERANK_SCORE` = 0.45, calibrated
+on cohere/rerank-v3.5): below it retrieval returns nothing and the query path refuses without a
+model call. Refusal accuracy: 100% in 4 of 4 runs since. The product path is rerank-on, so
+`pnpm eval` now grades the default (`RERANK_ENABLED`); `--no-rerank` and `--compare` keep the
+off variant measurable. **Judge model:** the answer-relevancy axis swung 69–85% across 11 runs on
+identical inputs with `zai/glm-5.3-flash` as judge (the bimodality noted in Slice 2), failing the
+0.70 gate on noise alone; two runs with `openai/gpt-5.6-luna` as judge scored 77.1% and 77.7%
+(faithfulness 96.8 / 97.5, precision 97.0 / 94.7, refusal 100 / 100, PASS both). `EVAL_MODEL` now
+defaults to Luna (~$0.15 per gate run vs ~$0.05); generation stays on GLM-flash. Ingest cost is dominated by contextualize (each chunk is sent with its full transcript,
+~37x the transcript volume; $0.58 for 28 videos); a prefix-cached context model or one blurb call
+per video would cut that by 40% or ~20x respectively — parked. Slice 3 gate: **passed at 31 videos**;
+the 65-video build is a rerun of the same command.
 
 ---
 
