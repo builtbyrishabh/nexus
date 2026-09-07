@@ -20,6 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/assemblyai": "3.0.36",
     "@ai-sdk/react": "^4.0.95",
     "@mastra/core": "^1.64.0",
     "@mastra/evals": "^1.10.0",

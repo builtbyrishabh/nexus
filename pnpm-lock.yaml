@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@ai-sdk/assemblyai':
+        specifier: 3.0.36
+        version: 3.0.36(zod@3.25.76)
       '@ai-sdk/react':
         specifier: ^4.0.95
         version: 4.0.95(react@19.2.8)(zod@3.25.76)
@@ -137,6 +140,12 @@ packages:
         optional: true
       express:
         optional: true
+
+  '@ai-sdk/assemblyai@3.0.36':
+    resolution: {integrity: sha512-10ufsC1LNLg+wsQDJTdGBmXWAjt5Y0amkYlneHtxSmh5EfDSnR2hMCBA5nP9USbVcNmZWQCw1dmnh1ahzXvknQ==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
 
   '@ai-sdk/gateway@4.0.74':
     resolution: {integrity: sha512-6hpLUtAD162KLyyj9LN2OuEyze7lzq4wwj7PyQPYdMmA8PBYwyMbmvmu1C7OzfexLSPltZK29pX8R6hrJsqBqA==}
@@ -2346,6 +2355,12 @@ snapshots:
       uuid: 11.1.1
     optionalDependencies:
       '@bufbuild/protobuf': 2.14.1
+
+  '@ai-sdk/assemblyai@3.0.36(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.10
+      '@ai-sdk/provider-utils': 5.0.36(zod@3.25.76)
+      zod: 3.25.76
 
   '@ai-sdk/gateway@4.0.74(zod@3.25.76)':
     dependencies:

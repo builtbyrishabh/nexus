@@ -6,8 +6,8 @@ import { db } from "~/server/db";
 import { chunk as chunkTable, source as sourceTable } from "~/server/db/schema";
 import type { NewChunk } from "~/server/db/schema";
 import type {
-  Provenance,
   SourceLoader,
+  SourceProvenance,
   SourceRef,
   Transcript,
 } from "~/server/domain/types";
@@ -28,12 +28,6 @@ export type SkipReason = "stt-final" | "unchanged";
 type ExistingSource = {
   contentHash: string;
   metadata: Record<string, unknown> | null;
-};
-
-/** What we persist in `source.metadata` (jsonb; no migration). */
-export type SourceProvenance = {
-  provenance: Provenance;
-  sttProvider?: "assemblyai";
 };
 
 /**
@@ -115,7 +109,9 @@ export async function ingestSource(
       ? []
       : await embedTexts(built.map((c, i) => `${contexts[i]}\n${c.text}`));
 
+  // Provenance rides on the transcript; the pipeline never knows which STT service ran.
   const metadata: SourceProvenance = { provenance: transcript.provenance };
+  if (transcript.sttProvider) metadata.sttProvider = transcript.sttProvider;
 
   // Atomic swap: upsert the source (hash included), replace its chunks. The new hash is only
   // durable once every replacement row is in — no window where the hash is ahead of the data.
