@@ -37,10 +37,21 @@ export type ChannelScope = string;
 /** Where a transcript came from. An STT transcript is final — re-runs never redo it. */
 export type Provenance = "captions" | "stt";
 
-/** The expensive thing a loader fetches. Drives the content hash. */
-export type Transcript = {
-  segments: Segment[];
+/** Which speech-to-text service produced an `stt` transcript. A code-level choice, not a knob. */
+export type SttProvider = "assemblyai";
+
+/**
+ * Where a transcript came from, persisted as `source.metadata` (jsonb; no migration) so the
+ * provenance gate can read it on the next run without touching the network.
+ */
+export type SourceProvenance = {
   provenance: Provenance;
+  sttProvider?: SttProvider;
+};
+
+/** The expensive thing a loader fetches. Drives the content hash. */
+export type Transcript = SourceProvenance & {
+  segments: Segment[];
 };
 
 /**

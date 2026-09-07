@@ -51,6 +51,14 @@ export const env = createEnv({
     RERANK_ENABLED: booleanFlag("false"),
     /** LLM judge for the eval scorers (Faithfulness/Answer-Relevancy/Context-Precision). */
     EVAL_MODEL: z.string().default("zai/glm-5.3-flash"),
+    /**
+     * STT fallback for caption-less videos is the one place a re-run can spend real money
+     * (audio download + AssemblyAI), so it is off by default and a fresh checkout can never
+     * pay. Flip it on per run: `TRANSCRIBE_FALLBACK=true pnpm ingest --channel ...`.
+     */
+    TRANSCRIBE_FALLBACK: booleanFlag("false"),
+    /** AssemblyAI key, direct — the AI Gateway does not route transcription. */
+    ASSEMBLYAI_API_KEY: z.string().optional(),
   },
 
   /**
@@ -76,6 +84,8 @@ export const env = createEnv({
     RERANK_MODEL: process.env.RERANK_MODEL,
     RERANK_ENABLED: process.env.RERANK_ENABLED,
     EVAL_MODEL: process.env.EVAL_MODEL,
+    TRANSCRIBE_FALLBACK: process.env.TRANSCRIBE_FALLBACK,
+    ASSEMBLYAI_API_KEY: process.env.ASSEMBLYAI_API_KEY,
     // NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
   },
   /**

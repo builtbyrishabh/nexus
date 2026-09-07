@@ -1,6 +1,7 @@
 import { Innertube, Log } from "youtubei.js";
 import { YoutubeTranscript } from "youtube-transcript";
 
+import { env } from "~/env";
 import type {
   ChannelScope,
   Segment,
@@ -9,6 +10,12 @@ import type {
   SourceRef,
   Transcript,
 } from "~/server/domain/types";
+import {
+  assertWithinCap,
+  isNoCaptions,
+  STT_PROVIDER,
+  transcribeAudio,
+} from "~/server/ingest/stt";
 
 type OEmbed = { title?: string; author_name?: string };
 
@@ -98,16 +105,58 @@ async function fetchMeta(
 }
 
 /**
- * Fetch the transcript, preferring English. YouTube exposes many caption tracks (including
+ * Fetch the captions, preferring English. YouTube exposes many caption tracks (including
  * auto-translations), and the library's default can land on a non-English one — so we ask
  * for English first and fall back to whatever the default track is if English is unavailable.
+ *
+ * Returns `undefined` only when captions genuinely do not exist (the STT trigger). Any other
+ * failure — rate limit, private/removed, network — rethrows: that video is `failed`, and a
+ * throttle can never turn into a paid transcription.
  */
-async function fetchTranscript(videoId: string) {
+async function fetchCaptions(videoId: string): Promise<Segment[] | undefined> {
   try {
-    return await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" });
-  } catch {
-    return await YoutubeTranscript.fetchTranscript(videoId);
+    const entries = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" }).catch(
+      () => YoutubeTranscript.fetchTranscript(videoId),
+    );
+    const segments = toSeconds(entries);
+    return segments.length > 0 ? segments : undefined;
+  } catch (error) {
+    if (isNoCaptions(error)) return undefined;
+    throw error;
   }
+}
+
+/**
+ * Innertube client for stream URLs. YouTube now demands a proof-of-origin token from the WEB,
+ * MWEB, IOS and ANDROID clients: without one the CDN either refuses to hand out a URL or 403s
+ * every byte past the first megabyte (measured). VISIONOS is the client that still serves a
+ * complete audio stream token-free; if it stops, this constant is the one thing to change.
+ */
+const AUDIO_CLIENT = "VISIONOS";
+
+/**
+ * The paid path, in guard order: flag → known duration under the cap → download audio into
+ * memory (AssemblyAI does not accept YouTube URLs) → one `transcribe()` call. Nothing is
+ * downloaded until every guard has passed.
+ */
+async function sttTranscript(videoId: string): Promise<Transcript> {
+  if (!env.TRANSCRIBE_FALLBACK) {
+    throw new Error(
+      `${videoId} has no captions; set TRANSCRIBE_FALLBACK=true to transcribe it (paid)`,
+    );
+  }
+  const yt = await getInnertube();
+  const info = await yt.getBasicInfo(videoId, { client: AUDIO_CLIENT });
+  const durationSec = info.basic_info.duration;
+  assertWithinCap(videoId, durationSec);
+
+  console.error(
+    `[stt] ${videoId}: no captions — transcribing ${Math.round((durationSec ?? 0) / 60)} min via ${STT_PROVIDER}`,
+  );
+  const stream = await info.download({ type: "audio", quality: "best", client: AUDIO_CLIENT });
+  const audio = new Uint8Array(await new Response(stream).arrayBuffer());
+  const segments = await transcribeAudio(audio);
+  return { segments, provenance: "stt", sttProvider: STT_PROVIDER };
 }
 
 /** One Innertube session per process (it fetches YouTube's client config on create). */
@@ -183,8 +232,8 @@ export const youtubeLoader: SourceLoader = {
 
   async loadTranscript(ref): Promise<Transcript> {
     const videoId = toVideoId(ref.externalId);
-    const segments = toSeconds(await fetchTranscript(videoId));
-    return { segments, provenance: "captions" };
+    const segments = await fetchCaptions(videoId);
+    return segments ? { segments, provenance: "captions" } : sttTranscript(videoId);
   },
 
   async loadMeta(ref): Promise<SourceMeta> {

@@ -37,7 +37,13 @@ youtubei.js into memory and handed to `transcribe()` — AssemblyAI does not acc
 fires **only** on genuine no-captions (disabled / unavailable / zero segments); rate limits and
 network errors rethrow so a throttle can never fan out into paid transcriptions. `TRANSCRIBE_FALLBACK`
 is off by default; the provider is a code-level choice in one file; videos over **180 minutes** fail
-before a byte is downloaded. **Failure semantics:** per-video isolation (`ingested | skipped |
+before a byte is downloaded. *Built 2026-09-07 (Slice 3.2):* audio comes from the **VISIONOS**
+Innertube client — WEB/MWEB/IOS/ANDROID now need a proof-of-origin token and 403 every byte past
+the first megabyte without one; word-level STT timing is grouped into sentence segments so
+citations land on sentence starts. Verified live on a caption-disabled 3-min talk: flag off →
+`failed` naming the flag (exit 1); flag on → one AssemblyAI call, 3 chunks (~1 min); reruns →
+`skipped (stt-final)` with zero network. Known edge: a video with no speech at all (music, b-roll)
+fails at AssemblyAI ("no spoken audio") — honest, nothing to index. **Failure semantics:** per-video isolation (`ingested | skipped |
 failed`), 3 videos in flight (a constant), outcomes in discovery order, exit non-zero if any video
 failed *or* nothing was indexed. No retries, resume files, or job table — the gates make "run it
 again" the retry. **Gate:** ingest 60–70 Hormozi uploads (`--limit`), re-run `pnpm eval --compare`;

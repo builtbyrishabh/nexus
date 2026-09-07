@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import {
+  YoutubeTranscriptDisabledError,
+  YoutubeTranscriptNotAvailableError,
+  YoutubeTranscriptTooManyRequestError,
+  YoutubeTranscriptVideoUnavailableError,
+} from "youtube-transcript";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { toSeconds, toVideoId } from "~/server/ingest/youtube-loader";
+import { toSeconds, toVideoId, youtubeLoader } from "~/server/ingest/youtube-loader";
 
 describe("toVideoId — one identity for URL or ID", () => {
   it("passes a bare 11-char video ID through", () => {
@@ -70,5 +76,119 @@ describe("toSeconds — unit normalization at the boundary", () => {
     ];
     const segments = toSeconds(transcript);
     expect(segments[1]).toEqual({ text: "b", startSec: 600, endSec: 604 });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// loadTranscript — captions first, STT only behind every guard. Network mocked at the seams:
+// the caption library, Innertube, and the AI SDK `transcribe()` call (the paid one).
+// ---------------------------------------------------------------------------------------------
+
+const mocks = vi.hoisted(() => ({
+  env: { TRANSCRIBE_FALLBACK: false, ASSEMBLYAI_API_KEY: "test-key" },
+  fetchTranscript: vi.fn(),
+  getBasicInfo: vi.fn(),
+  download: vi.fn(),
+  transcribe: vi.fn(),
+}));
+
+vi.mock("~/env", () => ({ env: mocks.env }));
+vi.mock("youtube-transcript", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("youtube-transcript")>();
+  return { ...actual, YoutubeTranscript: { fetchTranscript: mocks.fetchTranscript } };
+});
+vi.mock("youtubei.js", () => ({
+  Log: { setLevel: () => undefined, Level: { NONE: 0 } },
+  Innertube: { create: async () => ({ getBasicInfo: mocks.getBasicInfo }) },
+}));
+vi.mock("ai", () => ({ transcribe: mocks.transcribe }));
+
+const ref = { kind: "youtube_video", externalId: "UF8uR6Z6KLc" } as const;
+
+function videoOf(durationSec: number | undefined) {
+  mocks.getBasicInfo.mockResolvedValue({
+    basic_info: { duration: durationSec },
+    download: mocks.download,
+  });
+  mocks.download.mockImplementation(async () => new Blob([new Uint8Array([1, 2, 3])]).stream());
+}
+
+describe("loadTranscript — captions first, STT only behind every guard", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.env.TRANSCRIBE_FALLBACK = false;
+    mocks.transcribe.mockResolvedValue({
+      segments: [
+        { text: "Hello", startSecond: 0, endSecond: 0.5 },
+        { text: "world.", startSecond: 0.6, endSecond: 1 },
+      ],
+    });
+  });
+
+  it("captions present → captions provenance, nothing paid", async () => {
+    mocks.fetchTranscript.mockResolvedValue([{ text: "hi", offset: 0, duration: 1 }]);
+    await expect(youtubeLoader.loadTranscript(ref)).resolves.toEqual({
+      segments: [{ text: "hi", startSec: 0, endSec: 1 }],
+      provenance: "captions",
+    });
+    expect(mocks.getBasicInfo).not.toHaveBeenCalled();
+    expect(mocks.transcribe).not.toHaveBeenCalled();
+  });
+
+  it("no captions + flag off → fails naming the flag, before any Innertube call", async () => {
+    mocks.fetchTranscript.mockRejectedValue(new YoutubeTranscriptDisabledError("UF8uR6Z6KLc"));
+    await expect(youtubeLoader.loadTranscript(ref)).rejects.toThrow(/TRANSCRIBE_FALLBACK=true/);
+    expect(mocks.getBasicInfo).not.toHaveBeenCalled();
+    expect(mocks.transcribe).not.toHaveBeenCalled();
+  });
+
+  it("rate limit / private / network rethrow as-is — never STT, even with the flag on", async () => {
+    mocks.env.TRANSCRIBE_FALLBACK = true;
+    for (const error of [
+      new YoutubeTranscriptTooManyRequestError(),
+      new YoutubeTranscriptVideoUnavailableError("UF8uR6Z6KLc"),
+      new TypeError("fetch failed"),
+    ]) {
+      mocks.fetchTranscript.mockRejectedValue(error);
+      await expect(youtubeLoader.loadTranscript(ref)).rejects.toBe(error);
+    }
+    expect(mocks.getBasicInfo).not.toHaveBeenCalled();
+    expect(mocks.transcribe).not.toHaveBeenCalled();
+  });
+
+  it("over the cap → fails before a byte is downloaded", async () => {
+    mocks.env.TRANSCRIBE_FALLBACK = true;
+    mocks.fetchTranscript.mockRejectedValue(new YoutubeTranscriptDisabledError("UF8uR6Z6KLc"));
+    videoOf(200 * 60);
+    await expect(youtubeLoader.loadTranscript(ref)).rejects.toThrow(/over the 180 min STT cap/);
+    expect(mocks.download).not.toHaveBeenCalled();
+    expect(mocks.transcribe).not.toHaveBeenCalled();
+  });
+
+  it("flag on + genuinely no captions → exactly one transcribe() call, stt provenance", async () => {
+    mocks.env.TRANSCRIBE_FALLBACK = true;
+    mocks.fetchTranscript.mockRejectedValue(new YoutubeTranscriptNotAvailableError("UF8uR6Z6KLc"));
+    videoOf(5 * 60);
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await expect(youtubeLoader.loadTranscript(ref)).resolves.toEqual({
+      segments: [{ text: "Hello world.", startSec: 0, endSec: 1 }],
+      provenance: "stt",
+      sttProvider: "assemblyai",
+    });
+    expect(mocks.download).toHaveBeenCalledTimes(1);
+    expect(mocks.download).toHaveBeenCalledWith(expect.objectContaining({ type: "audio" }));
+    expect(mocks.transcribe).toHaveBeenCalledTimes(1);
+    expect(Array.from(mocks.transcribe.mock.calls[0]![0].audio as Uint8Array)).toEqual([1, 2, 3]);
+    stderr.mockRestore();
+  });
+
+  it("captions that exist but are empty count as no captions", async () => {
+    mocks.env.TRANSCRIBE_FALLBACK = true;
+    mocks.fetchTranscript.mockResolvedValue([]);
+    videoOf(60);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await expect(youtubeLoader.loadTranscript(ref)).resolves.toMatchObject({ provenance: "stt" });
+    expect(mocks.transcribe).toHaveBeenCalledTimes(1);
   });
 });
