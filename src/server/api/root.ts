@@ -1,3 +1,4 @@
+import { chatsRouter } from "~/server/api/routers/chats";
 import {
   createCallerFactory,
   createTRPCRouter,
@@ -7,11 +8,12 @@ import {
 /**
  * This is the primary router for your server.
  *
- * The Slice 0 chat path runs through the `/api/chat` route handler (streaming), not tRPC.
- * A single `health` procedure keeps the tRPC scaffold wired for future routers.
+ * The chat *streaming* path runs through the `/api/chat` route handler, not tRPC. tRPC owns the
+ * sidebar's thread CRUD (`chats`) plus a `health` probe.
  */
 export const appRouter = createTRPCRouter({
   health: publicProcedure.query(() => ({ ok: true })),
+  chats: chatsRouter,
 });
 
 // export type definition of API

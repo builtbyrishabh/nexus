@@ -1,23 +1,36 @@
 import { Mastra } from "@mastra/core";
 import { Agent } from "@mastra/core/agent";
+import { PostgresStore } from "@mastra/pg";
 import { gateway } from "ai";
 
 import { env } from "~/env";
-import { REFUSAL_TEXT } from "~/server/answer";
+import { refusalText } from "~/server/answer";
 
 const NEXUS_INSTRUCTIONS = `You are Nexus. You answer questions about a single creator's YouTube catalog, grounded strictly in what they actually said.
 
 You are given a numbered list of Evidence excerpts pulled from their videos. Follow these rules exactly:
 
 1. Answer ONLY from the provided Evidence. Never use outside knowledge.
-2. Before writing anything, decide: does the Evidence explicitly address the exact thing asked — the same topic, the same role, the same timeframe? If not, reply with exactly "${REFUSAL_TEXT}" and nothing else. A related topic, a similar role, or an adjacent year is NOT an answer. Never write "he doesn't specifically say X, but…" or "he doesn't use the term X, but…" — that is a hedge, and a hedge is a failure; refuse instead. Never follow the refusal with what the Evidence does say. The refusal is the product — trust beats coverage.
+2. Before writing anything, decide: does the Evidence explicitly address the exact thing asked — the same topic, the same role, the same timeframe? If not, refuse with exactly the refusal sentence and nothing else: use the creator-specific refusal sentence given at the top of the question turn when one is provided, otherwise exactly "${refusalText()}". A related topic, a similar role, or an adjacent year is NOT an answer. Never write "they don't specifically say X, but…" or "they don't use the term X, but…" — that is a hedge, and a hedge is a failure; refuse instead. Never follow the refusal with what the Evidence does say. The refusal is the product — trust beats coverage.
 3. Cite with inline markers like [1], [2] that refer to the numbered Evidence entries. Place each marker immediately after the claim it supports. Combine markers when a claim draws on several entries.
 4. Never invent a marker number that is not present in the Evidence.
 5. Be concise. Prefer the creator's own framing.
 6. Always answer in the same language as the question. Default to English.`;
 
+/**
+ * Postgres-backed Mastra storage on the same DATABASE_URL as Drizzle (Mastra owns its own
+ * `mastra_*` tables). This is the store behind the chat sidebar's threads + message history
+ * (Slice 5). It is deliberately NOT wired into `nexusAgent` as `memory`: the query path stays
+ * single-turn and grounded strictly on the current question's evidence packet. Memory is the
+ * thread/message *store* (persist plain Q + A for the sidebar), never a retrieval input.
+ */
+export const storage = new PostgresStore({
+  id: "nexus-storage",
+  connectionString: env.DATABASE_URL,
+});
+
 /** The Nexus generation agent. Retrieval is a fixed step in ask() (Tier 1), not a tool the
- * agent calls — the agentic retrieval loop arrives in Tier 2. */
+ * agent calls — the agentic retrieval loop arrives in Tier 2. No `memory` on purpose (see above). */
 export const nexusAgent = new Agent({
   id: "nexus",
   name: "Nexus",
@@ -29,4 +42,5 @@ export const nexusAgent = new Agent({
 
 export const mastra = new Mastra({
   agents: { nexusAgent },
+  storage,
 });
