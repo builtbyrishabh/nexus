@@ -1,0 +1,1023 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Slice 3 — Channel Ingest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+<style>
+  :root {
+    --paper:      #EEF0EE;
+    --surface:    #FBFCFB;
+    --surface-2:  #F4F6F3;
+    --ink:        #15181C;
+    --ink-soft:   #3A4148;
+    --muted:      #6B7480;
+    --line:       #D8DCD8;
+    --line-soft:  #E6E9E5;
+    --ingest:     #1D7A63;
+    --ingest-bg:  #DDEFE8;
+    --whisper:    #B5532B;
+    --whisper-bg: #F7E4DB;
+    --fix:        #5B5F9E;
+    --fix-bg:     #E6E6F5;
+    --pass:       #1F8A52;
+    --fail:       #C64239;
+    --code-bg:    #F2F4F1;
+    --code-ink:   #23303f;
+
+    --measure: 42rem;
+    --wide: 58rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #101317;
+      --surface:    #171B20;
+      --surface-2:  #1C2127;
+      --ink:        #E7EAEC;
+      --ink-soft:   #C2C8CD;
+      --muted:      #8A939D;
+      --line:       #2A3138;
+      --line-soft:  #232a31;
+      --ingest:     #5CC9A8;
+      --ingest-bg:  #12322A;
+      --whisper:    #F09A72;
+      --whisper-bg: #3A1F14;
+      --fix:        #A3A6E8;
+      --fix-bg:     #23244A;
+      --pass:       #4BC585;
+      --fail:       #F0736A;
+      --code-bg:    #12171d;
+      --code-ink:   #cdd6e0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:      #101317;
+    --surface:    #171B20;
+    --surface-2:  #1C2127;
+    --ink:        #E7EAEC;
+    --ink-soft:   #C2C8CD;
+    --muted:      #8A939D;
+    --line:       #2A3138;
+    --line-soft:  #232a31;
+    --ingest:     #5CC9A8;
+    --ingest-bg:  #12322A;
+    --whisper:    #F09A72;
+    --whisper-bg: #3A1F14;
+    --fix:        #A3A6E8;
+    --fix-bg:     #23244A;
+    --pass:       #4BC585;
+    --fail:       #F0736A;
+    --code-bg:    #12171d;
+    --code-ink:   #cdd6e0;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: var(--wide); margin: 0 auto; padding: 0 1.5rem; }
+  .col  { max-width: var(--measure); margin-left: auto; margin-right: auto; }
+
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  code {
+    font-size: 0.86em;
+    background: var(--code-bg);
+    color: var(--code-ink);
+    padding: 0.1em 0.38em;
+    border-radius: 4px;
+    border: 1px solid var(--line-soft);
+    white-space: nowrap;
+  }
+  a { color: var(--ingest); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--ingest); outline-offset: 2px; }
+
+  /* ---------- header ---------- */
+  header { border-bottom: 1px solid var(--line); background: var(--surface); }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.9rem 0; font-size: 0.8rem;
+  }
+  .brand { font-weight: 600; letter-spacing: 0.02em; }
+  .brand span { color: var(--muted); font-weight: 400; }
+  .toggle {
+    font: inherit; font-size: 0.78rem; cursor: pointer;
+    background: var(--surface-2); color: var(--ink-soft);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 0.28rem 0.8rem;
+  }
+  .toggle:hover { border-color: var(--muted); }
+
+  .hero { padding: 3.4rem 0 2.8rem; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.74rem; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 1rem;
+  }
+  h1 {
+    font-family: "Instrument Serif", Georgia, serif;
+    font-weight: 400; font-size: clamp(2.9rem, 7vw, 4.6rem);
+    line-height: 1.02; letter-spacing: -0.01em; text-wrap: balance;
+    margin: 0 0 1.1rem;
+  }
+  h1 em { font-style: italic; color: var(--ingest); }
+  .lede { font-size: 1.18rem; color: var(--ink-soft); max-width: 40rem; margin: 0; }
+
+  .pillars { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 2.4rem; }
+  @media (max-width: 720px) { .pillars { grid-template-columns: 1fr; } }
+  .pillar {
+    border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem 1.2rem;
+    background: var(--surface);
+  }
+  .pillar .tag {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; letter-spacing: 0.06em;
+    text-transform: uppercase; font-weight: 600; display: inline-block; margin-bottom: 0.5rem;
+    padding: 0.12rem 0.5rem; border-radius: 4px;
+  }
+  .pillar.i .tag { color: var(--ingest); background: var(--ingest-bg); }
+  .pillar.w .tag { color: var(--whisper); background: var(--whisper-bg); }
+  .pillar h3 { margin: 0 0 0.3rem; font-size: 1.08rem; }
+  .pillar p { margin: 0; font-size: 0.95rem; color: var(--ink-soft); }
+  .also {
+    margin-top: 1rem; font-size: 0.88rem; color: var(--muted);
+    border: 1px dashed var(--line); border-radius: 10px; padding: 0.7rem 1.1rem;
+  }
+  .also b { color: var(--fix); font-weight: 600; }
+
+  /* ---------- sections ---------- */
+  section { padding: 3rem 0; border-top: 1px solid var(--line-soft); }
+  .kicker {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.75rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 0.7rem;
+    display: flex; align-items: center; gap: 0.6rem;
+  }
+  .kicker .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .kicker.i .dot { background: var(--ingest); }
+  .kicker.w .dot { background: var(--whisper); }
+  .kicker.f .dot { background: var(--fix); }
+  .kicker.n .dot { background: var(--muted); }
+  h2 {
+    font-family: "Instrument Serif", Georgia, serif; font-weight: 400;
+    font-size: clamp(2rem, 4.5vw, 2.9rem); line-height: 1.08; letter-spacing: -0.01em;
+    margin: 0 0 1.2rem; text-wrap: balance;
+  }
+  h4 { font-size: 1.06rem; margin: 2rem 0 0.5rem; letter-spacing: -0.005em; }
+  p { margin: 0 0 1.1rem; }
+  .col > p, .col > ul, .col > ol { color: var(--ink-soft); }
+  strong { color: var(--ink); font-weight: 600; }
+  ul, ol { padding-left: 1.2rem; margin: 0 0 1.1rem; }
+  li { margin-bottom: 0.4rem; }
+
+  .note {
+    font-size: 0.9rem; color: var(--muted); border-left: 2px solid var(--line);
+    padding-left: 0.9rem; margin: 1.4rem 0;
+  }
+  .note.w { border-left-color: var(--whisper); }
+  .note.i { border-left-color: var(--ingest); }
+
+  /* ---------- figure (svg) ---------- */
+  figure.figure {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 1.4rem 1.2rem 1.1rem; margin: 1.8rem auto; overflow-x: auto;
+  }
+  figure.figure svg { display: block; max-width: 100%; height: auto; margin: 0 auto; color: var(--ink); }
+  figcaption {
+    font-size: 0.82rem; color: var(--muted); text-align: center; margin-top: 1rem;
+    font-family: "IBM Plex Mono", monospace; letter-spacing: 0.02em;
+  }
+  /* svg palette hooks */
+  svg .box   { fill: var(--surface-2); stroke: var(--line); stroke-width: 1.2; }
+  svg .box.i { fill: var(--ingest-bg); stroke: var(--ingest); }
+  svg .box.w { fill: var(--whisper-bg); stroke: var(--whisper); }
+  svg .box.gate { fill: var(--surface); stroke: var(--ink-soft); stroke-dasharray: 4 3; }
+  svg .box.ok  { fill: var(--surface); stroke: var(--pass); }
+  svg .box.bad { fill: var(--surface); stroke: var(--fail); }
+  svg .t  { font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 12.5px; font-weight: 600; fill: var(--ink); }
+  svg .s  { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; fill: var(--muted); }
+  svg .s.i { fill: var(--ingest); } svg .s.w { fill: var(--whisper); } svg .s.ok { fill: var(--pass); } svg .s.bad { fill: var(--fail); }
+  svg .lbl { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; fill: var(--ink-soft); }
+  svg .row { font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: 0.12em; fill: var(--muted); }
+  svg .edge { stroke: currentColor; stroke-width: 1.3; fill: none; }
+  svg .edge.faint { stroke: var(--muted); }
+  svg .edge.bad { stroke: var(--fail); stroke-dasharray: 5 4; }
+  svg .edge.ok { stroke: var(--pass); }
+  svg .edge.w { stroke: var(--whisper); }
+  svg .file { font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 600; fill: var(--ink); }
+  svg .node { fill: var(--surface-2); stroke: var(--line); stroke-width: 1.2; }
+  svg .node.pure { fill: var(--ingest-bg); stroke: var(--ingest); }
+  svg .node.w { fill: var(--whisper-bg); stroke: var(--whisper); }
+
+  /* ---------- io card ---------- */
+  .io {
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    background: var(--surface); margin: 1.6rem auto; box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  }
+  .io-head {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.9rem; font-weight: 600;
+    padding: 0.75rem 1.1rem; border-bottom: 1px solid var(--line-soft);
+    background: var(--surface-2); color: var(--code-ink);
+    display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  }
+  .io-head .file { color: var(--muted); font-weight: 400; font-size: 0.8rem; margin-left: auto; }
+  .io-grid { display: grid; grid-template-columns: 1fr auto 1fr; align-items: stretch; }
+  @media (max-width: 620px) { .io-grid { grid-template-columns: 1fr; } }
+  .io-cell { padding: 1rem 1.1rem; }
+  .io-cell + .io-cell { border-left: 1px solid var(--line-soft); }
+  @media (max-width: 620px) { .io-cell + .io-cell { border-left: 0; border-top: 1px solid var(--line-soft); } }
+  .io-arrow {
+    display: flex; align-items: center; justify-content: center; padding: 0 0.4rem;
+    color: var(--muted); font-size: 1.3rem; border-left: 1px solid var(--line-soft);
+  }
+  @media (max-width: 620px) {
+    .io-arrow { border-left: 0; border-top: 1px solid var(--line-soft); padding: 0.3rem; transform: rotate(90deg); }
+  }
+  .io-label {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.68rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 0.55rem;
+  }
+  .io-cell .mono { font-size: 0.82rem; line-height: 1.5; color: var(--code-ink); display: block; }
+  .io-cell .desc { font-size: 0.86rem; color: var(--ink-soft); margin-top: 0.5rem; }
+
+  /* ---------- code ---------- */
+  pre.code {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1rem 1.2rem; margin: 1.2rem 0; overflow-x: auto;
+    font-family: "IBM Plex Mono", monospace; font-size: 0.82rem; line-height: 1.55; color: var(--code-ink);
+  }
+  pre.code code { background: none; border: 0; padding: 0; white-space: pre; font-size: inherit; color: inherit; }
+  pre.code .cm { color: var(--muted); }
+  pre.code .add { color: var(--pass); }
+  pre.code .del { color: var(--fail); text-decoration: line-through; text-decoration-thickness: 1px; }
+  pre.code .hl { color: var(--ingest); font-weight: 600; }
+  .beforeafter { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.4rem auto; }
+  @media (max-width: 720px) { .beforeafter { grid-template-columns: 1fr; } }
+  .beforeafter .ba-h {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 0.4rem;
+  }
+  .beforeafter pre.code { margin: 0; height: 100%; }
+
+  /* ---------- table ---------- */
+  .tablewrap { overflow-x: auto; margin: 1.6rem auto; border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; min-width: 560px; }
+  thead th {
+    text-align: left; font-family: "IBM Plex Mono", monospace; font-size: 0.72rem;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600;
+    padding: 0.8rem 1rem; background: var(--surface-2); border-bottom: 1px solid var(--line);
+  }
+  tbody td { padding: 0.85rem 1rem; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td .n { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .dname { font-weight: 600; color: var(--ink); }
+  .dwhy { color: var(--ink-soft); font-size: 0.88rem; }
+  .dcost { color: var(--muted); font-size: 0.85rem; }
+  td .pill {
+    display: inline-block; font-family: "IBM Plex Mono", monospace; font-size: 0.66rem; letter-spacing: 0.08em;
+    text-transform: uppercase; font-weight: 600; padding: 0.08rem 0.45rem; border-radius: 4px; margin-bottom: 0.3rem;
+  }
+  .pill.i { color: var(--ingest); background: var(--ingest-bg); }
+  .pill.w { color: var(--whisper); background: var(--whisper-bg); }
+  .pill.f { color: var(--fix); background: var(--fix-bg); }
+
+  /* ---------- outcome chips ---------- */
+  .chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; margin: 1.4rem 0; }
+  @media (max-width: 620px) { .chips { grid-template-columns: 1fr; } }
+  .chip { border: 1px solid var(--line); border-radius: 10px; padding: 0.8rem 1rem; background: var(--surface); }
+  .chip .k { font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; font-weight: 600; display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.3rem; }
+  .chip .k .pip { width: 8px; height: 8px; border-radius: 50%; }
+  .chip.ok .k { color: var(--pass); } .chip.ok .pip { background: var(--pass); }
+  .chip.sk .k { color: var(--muted); } .chip.sk .pip { background: var(--muted); }
+  .chip.bad .k { color: var(--fail); } .chip.bad .pip { background: var(--fail); }
+  .chip p { margin: 0; font-size: 0.85rem; color: var(--ink-soft); }
+
+  /* ---------- cli ---------- */
+  .cli {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 12px;
+    padding: 0.4rem 0; margin: 1.6rem auto; font-family: "IBM Plex Mono", monospace; font-size: 0.85rem;
+    overflow-x: auto;
+  }
+  .cli .row { display: grid; grid-template-columns: minmax(300px, auto) 1fr; gap: 1.2rem; padding: 0.55rem 1.1rem; align-items: baseline; }
+  .cli .row + .row { border-top: 1px solid var(--line-soft); }
+  .cli .cmd { color: var(--code-ink); white-space: nowrap; }
+  .cli .cmd .flag { color: var(--ingest); }
+  .cli .cmd .env { color: var(--whisper); }
+  .cli .exp { color: var(--muted); font-family: "IBM Plex Sans", sans-serif; font-size: 0.86rem; }
+
+  /* ---------- reading order ---------- */
+  .flow { margin: 1.4rem 0; padding-left: 0; list-style: none; counter-reset: step; }
+  .flow li {
+    position: relative; padding-left: 2.6rem; margin-bottom: 1.15rem; counter-increment: step;
+    color: var(--ink-soft); font-size: 0.96rem;
+  }
+  .flow li::before {
+    content: counter(step); position: absolute; left: 0; top: 0.05rem;
+    width: 1.8rem; height: 1.8rem; border-radius: 50%;
+    background: var(--ingest-bg); color: var(--ingest); font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; justify-content: center;
+  }
+  .flow li.w::before { background: var(--whisper-bg); color: var(--whisper); }
+  .flow li.f::before { background: var(--fix-bg); color: var(--fix); }
+  .flow .f-name { font-family: "IBM Plex Mono", monospace; font-size: 0.84rem; font-weight: 600; color: var(--ink); }
+  .flow .f-min { font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; color: var(--muted); margin-left: 0.5rem; }
+  .flow .f-why { display: block; margin-top: 0.15rem; }
+
+  /* ---------- inputs list ---------- */
+  .inputs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem 1.2rem; margin: 1.2rem 0; padding: 0; list-style: none; }
+  @media (max-width: 620px) { .inputs { grid-template-columns: 1fr; } }
+  .inputs li { display: grid; grid-template-columns: auto 1fr; gap: 0.6rem; align-items: baseline; font-size: 0.88rem; color: var(--ink-soft); margin: 0; }
+  .inputs code { white-space: nowrap; }
+  .inputs .how { color: var(--muted); font-size: 0.82rem; }
+
+  footer { border-top: 1px solid var(--line); padding: 2.6rem 0 3.4rem; color: var(--muted); font-size: 0.88rem; }
+  footer .col { text-align: center; }
+  .oneline {
+    font-family: "Instrument Serif", Georgia, serif; font-size: 1.5rem; font-style: italic;
+    color: var(--ink); text-align: center; margin: 1.4rem 0; line-height: 1.3;
+  }
+  @media (prefers-reduced-motion: no-preference) { .toggle { transition: border-color 0.15s ease; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">Nexus <span>· ingestion field notes</span></div>
+      <button class="toggle" id="themeToggle" type="button" aria-label="Toggle light and dark theme">◑ theme</button>
+    </div>
+  </div>
+  <div class="wrap hero">
+    <div class="col">
+      <p class="eyebrow">Slice 3 · PR #6 · full-channel ingest</p>
+      <h1>The whole<br /><em>catalog</em></h1>
+      <p class="lede">Slices 0–2 could answer questions about videos we pointed at one by one. The product promise is a creator's <strong>entire</strong> channel. Slice&nbsp;3 turns one command into a corpus: discover every upload, ingest them safely in parallel, and reach the videos that have no captions at all.</p>
+    </div>
+    <div class="col pillars">
+      <div class="pillar i">
+        <span class="tag">Discover</span>
+        <h3>Every upload, no API key</h3>
+        <p><code>youtubeLoader.discover()</code> walks a channel's Videos tab to the end through Innertube continuations. A handle, a UC id, a URL, or any video all resolve to the owner channel.</p>
+      </div>
+      <div class="pillar i">
+        <span class="tag">Ingest at scale</span>
+        <h3>Bounded, isolated, idempotent</h3>
+        <p><code>ingestChannel()</code> runs the per-video pipeline three at a time. One bad video fails alone; unchanged videos skip before any paid work; the CLI exit code tells CI the truth.</p>
+      </div>
+      <div class="pillar w">
+        <span class="tag">Whisper fallback</span>
+        <h3>A way in for silent videos</h3>
+        <p>When a video genuinely has no caption track, and only then, audio is transcribed through the Gateway. Off by default, capped at 25&nbsp;MB, and never paid for twice.</p>
+      </div>
+    </div>
+    <div class="col also">
+      <b>Also riding in this diff:</b> the Slice&nbsp;2 fixes from PR&nbsp;#7 (the array-binding bug that broke every query, the context blurb on the query path, the Hormozi golden set). They were merged into this branch so it stays reviewable against <code>main</code>. Covered near the end.
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ GROUND FLOOR ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker n"><span class="dot"></span>Ground floor</p>
+      <h2>Where Slice&nbsp;2 left ingestion</h2>
+      <p>Before this PR, ingestion was a single-video affair. <code>pnpm ingest &lt;videoId&gt;</code> ran one pipeline: fetch the caption track, chunk it with timestamps, write a Contextual-Retrieval blurb per chunk, embed, and upsert. It was already idempotent (a SHA-256 of the transcript decided whether anything was written), but three things stood in the way of "the whole channel":</p>
+      <ul>
+        <li><strong>No discovery.</strong> Nothing could list a channel's uploads. You had to know the video id.</li>
+        <li><strong>A YouTube-flavoured orchestrator.</strong> The pipeline itself called <code>toVideoId()</code> and the loader returned transcript and metadata in one lump, so a re-run paid for the metadata request even when it was about to skip.</li>
+        <li><strong>Captions or nothing.</strong> A video with captions disabled simply could not be ingested, and the identity regexes (what is a video id? a channel id?) lived in more than one place.</li>
+      </ul>
+      <p>Slice&nbsp;3 addresses all three, and it does so without touching the query path. Nothing in <code>retrieve()</code> or <code>ask()</code> changes for channel ingest; the corpus just gets bigger.</p>
+    </div>
+  </section>
+
+  <!-- ============ THE MAP ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker i"><span class="dot"></span>The map</p>
+      <h2>How one command becomes a corpus</h2>
+      <p>Hold this picture while reading the rest. Three phases: discover the channel once, decide per video whether there is any work to do, and write only when there is. The two dashed boxes are <strong>skip gates</strong>. They are ordered cheapest-first on purpose, so a re-run of an already-ingested channel costs almost nothing.</p>
+    </div>
+
+    <figure class="figure">
+      <svg viewBox="0 0 880 440" role="img" aria-label="The channel ingest flow: discover uploads once, then per video pass two skip gates (Whisper provenance, unchanged hash) before chunking, embedding and writing in one transaction; each video yields an outcome and the CLI exit code reflects failures.">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+          </marker>
+          <marker id="ah-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)" />
+          </marker>
+        </defs>
+
+        <!-- Row 1: discover -->
+        <text class="row" x="20" y="24">1 · DISCOVER — ONCE PER CHANNEL</text>
+        <rect class="box" x="20" y="36" width="170" height="60" rx="8" />
+        <text class="t" x="105" y="61" text-anchor="middle">Channel ref</text>
+        <text class="s" x="105" y="78" text-anchor="middle">UC id · @handle · URL</text>
+
+        <line class="edge" x1="190" y1="66" x2="228" y2="66" marker-end="url(#ah)" />
+        <rect class="box i" x="230" y="36" width="170" height="60" rx="8" />
+        <text class="t" x="315" y="61" text-anchor="middle">resolveChannelId()</text>
+        <text class="s i" x="315" y="78" text-anchor="middle">Innertube · no API key</text>
+
+        <line class="edge" x1="400" y1="66" x2="438" y2="66" marker-end="url(#ah)" />
+        <rect class="box i" x="440" y="36" width="200" height="60" rx="8" />
+        <text class="t" x="540" y="61" text-anchor="middle">listUploads()</text>
+        <text class="s i" x="540" y="78" text-anchor="middle">continuation paging · --limit</text>
+
+        <line class="edge" x1="640" y1="66" x2="678" y2="66" marker-end="url(#ah)" />
+        <rect class="box" x="680" y="36" width="180" height="60" rx="8" />
+        <text class="t" x="770" y="61" text-anchor="middle">SourceRef[]</text>
+        <text class="s" x="770" y="78" text-anchor="middle">newest first, to the end</text>
+
+        <!-- elbow to row 2 -->
+        <polyline class="edge" points="770,96 770,118 105,118 105,148" marker-end="url(#ah)" />
+        <text class="lbl" x="437" y="113" text-anchor="middle">mapPool · 3 videos in flight · outcomes keep discovery order</text>
+
+        <!-- Row 2: decide -->
+        <text class="row" x="20" y="142">2 · DECIDE — PER VIDEO</text>
+        <rect class="box gate" x="20" y="150" width="170" height="60" rx="8" />
+        <text class="t" x="105" y="171" text-anchor="middle">Whisper already?</text>
+        <text class="s" x="105" y="186" text-anchor="middle">provenance = whisper</text>
+        <text class="s i" x="105" y="201" text-anchor="middle">yes → skipped, no load</text>
+
+        <line class="edge" x1="190" y1="180" x2="228" y2="180" marker-end="url(#ah)" />
+        <rect class="box" x="230" y="150" width="170" height="60" rx="8" />
+        <text class="t" x="315" y="175" text-anchor="middle">loadTranscript()</text>
+        <text class="s" x="315" y="192" text-anchor="middle">captions, else Whisper</text>
+
+        <line class="edge" x1="400" y1="180" x2="438" y2="180" marker-end="url(#ah)" />
+        <rect class="box" x="440" y="150" width="200" height="60" rx="8" />
+        <text class="t" x="540" y="175" text-anchor="middle">sha256(transcript)</text>
+        <text class="s" x="540" y="192" text-anchor="middle">→ content_hash</text>
+
+        <line class="edge" x1="640" y1="180" x2="678" y2="180" marker-end="url(#ah)" />
+        <rect class="box gate" x="680" y="150" width="180" height="60" rx="8" />
+        <text class="t" x="770" y="171" text-anchor="middle">Hash unchanged?</text>
+        <text class="s" x="770" y="186" text-anchor="middle">vs existing source row</text>
+        <text class="s i" x="770" y="201" text-anchor="middle">yes → skipped, no metadata</text>
+
+        <!-- elbow to row 3 -->
+        <polyline class="edge" points="770,210 770,236 105,236 105,268" marker-end="url(#ah)" />
+        <text class="lbl" x="437" y="231" text-anchor="middle">transcript is new or changed → we will write</text>
+
+        <!-- Row 3: write -->
+        <text class="row" x="20" y="262">3 · WRITE — ONLY IF NEW OR CHANGED</text>
+        <rect class="box" x="20" y="270" width="170" height="60" rx="8" />
+        <text class="t" x="105" y="295" text-anchor="middle">loadMeta()</text>
+        <text class="s" x="105" y="312" text-anchor="middle">oEmbed title · author</text>
+
+        <line class="edge" x1="190" y1="300" x2="228" y2="300" marker-end="url(#ah)" />
+        <rect class="box" x="230" y="270" width="170" height="60" rx="8" />
+        <text class="t" x="315" y="295" text-anchor="middle">chunk · context · embed</text>
+        <text class="s" x="315" y="312" text-anchor="middle">all remote work first</text>
+
+        <line class="edge" x1="400" y1="300" x2="438" y2="300" marker-end="url(#ah)" />
+        <rect class="box" x="440" y="270" width="200" height="60" rx="8" />
+        <text class="t" x="540" y="295" text-anchor="middle">one transaction</text>
+        <text class="s" x="540" y="312" text-anchor="middle">upsert source · swap chunks</text>
+
+        <line class="edge" x1="640" y1="300" x2="678" y2="300" marker-end="url(#ah)" />
+        <rect class="box i" x="680" y="270" width="180" height="60" rx="8" />
+        <text class="t" x="770" y="295" text-anchor="middle">VideoOutcome</text>
+        <text class="s i" x="770" y="312" text-anchor="middle">ingested · skipped · failed</text>
+
+        <!-- to CLI -->
+        <line class="edge" x1="770" y1="330" x2="770" y2="368" marker-end="url(#ah)" />
+        <rect class="box" x="640" y="370" width="220" height="56" rx="8" />
+        <text class="t" x="750" y="392" text-anchor="middle">pnpm ingest --channel</text>
+        <text class="s" x="750" y="409" text-anchor="middle">exit 1 on failure or empty run</text>
+
+        <!-- failure note -->
+        <text class="s bad" x="20" y="392">any throw in rows 2–3 → that video's outcome is "failed";</text>
+        <text class="s bad" x="20" y="407">the other videos keep going (channel.ts catches per video).</text>
+      </svg>
+      <figcaption>ingestChannel() → ingestSource(ref, loader), per video. Dashed boxes are skip gates, ordered cheapest first.</figcaption>
+    </figure>
+
+    <div class="col">
+      <p>Two things to notice in the picture. First, <strong>metadata is fetched only in row&nbsp;3</strong>. In Slice&nbsp;2 the loader returned transcript and metadata together, so every re-run paid an oEmbed request before discovering it had nothing to do. Splitting the loader into <code>loadTranscript()</code> and <code>loadMeta()</code> is what makes the second gate cheap.</p>
+      <p>Second, <strong>the first gate never loads anything</strong>. A Whisper transcript is final: the audio will not change, and re-transcribing it is the most expensive thing ingest can do. So the pipeline checks the persisted provenance on the source row before touching the network at all. To force a re-transcribe, delete the row.</p>
+    </div>
+  </section>
+
+  <!-- ============ WHO IMPORTS WHOM ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker i"><span class="dot"></span>The wiring</p>
+      <h2>Who imports whom</h2>
+      <p>Seven files carry Slice&nbsp;3. The shape to see is a <strong>layered tree with one pure leaf at the bottom</strong>: <code>youtube-url.ts</code> knows what a video id and a channel id look like and nothing else. Both the caption loader and the Whisper module depend on it; neither depends on the other. Before the review fixes, Whisper imported the loader for <code>toVideoId</code> while the loader imported Whisper for the fallback, an import cycle. Extracting the identity helpers into their own module is what broke it.</p>
+    </div>
+
+    <figure class="figure">
+      <svg viewBox="0 0 800 450" role="img" aria-label="Module dependency map for Slice 3: scripts/ingest.ts imports channel.ts and pipeline.ts; channel.ts imports pool.ts, pipeline.ts and youtube-loader.ts; pipeline.ts and youtube-loader.ts and whisper.ts all import youtube-url.ts; youtube-loader.ts imports whisper.ts; the former whisper-to-loader import (a cycle) is removed.">
+        <defs>
+          <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+          </marker>
+          <marker id="ah2-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--fail)" />
+          </marker>
+        </defs>
+
+        <!-- edges first (under nodes) -->
+        <line class="edge" x1="350" y1="60" x2="215" y2="110" marker-end="url(#ah2)" />
+        <text class="lbl" x="262" y="80" text-anchor="end">ingestChannel()</text>
+
+        <line class="edge" x1="410" y1="60" x2="545" y2="110" marker-end="url(#ah2)" />
+        <text class="lbl" x="500" y="80" text-anchor="start">ingestVideo()</text>
+
+        <line class="edge" x1="150" y1="150" x2="110" y2="210" marker-end="url(#ah2)" />
+        <text class="lbl" x="104" y="185" text-anchor="end">mapPool()</text>
+
+        <line class="edge" x1="260" y1="130" x2="498" y2="130" marker-end="url(#ah2)" />
+        <text class="lbl" x="380" y="122" text-anchor="middle">ingestSource(ref, loader)</text>
+
+        <line class="edge" x1="220" y1="150" x2="340" y2="210" marker-end="url(#ah2)" />
+        <text class="lbl" x="300" y="178" text-anchor="end">discover()</text>
+
+        <line class="edge" x1="540" y1="150" x2="420" y2="210" marker-end="url(#ah2)" />
+        <text class="lbl" x="498" y="192" text-anchor="start">youtubeLoader (ingestVideo)</text>
+
+        <polyline class="edge" points="650,140 700,140 700,410 457,410" marker-end="url(#ah2)" />
+        <text class="lbl" x="708" y="280" text-anchor="start">toVideoId()</text>
+
+        <line class="edge" x1="350" y1="250" x2="350" y2="298" marker-end="url(#ah2)" />
+        <text class="lbl" x="358" y="268" text-anchor="start">transcribeWithWhisper()</text>
+
+        <line class="edge" x1="350" y1="340" x2="350" y2="388" marker-end="url(#ah2)" />
+        <text class="lbl" x="358" y="370" text-anchor="start">watchUrl()</text>
+
+        <polyline class="edge" points="305,235 270,235 270,410 303,410" marker-end="url(#ah2)" />
+        <text class="lbl" x="262" y="326" text-anchor="end">isVideoId · isChannelId</text>
+        <text class="lbl" x="262" y="340" text-anchor="end">channelUrl · tryVideoId</text>
+
+        <!-- removed cycle -->
+        <line class="edge bad" x1="430" y1="298" x2="430" y2="252" marker-end="url(#ah2-bad)" />
+        <text class="s bad" x="438" y="294" text-anchor="start">✕ removed: whisper → loader (cycle)</text>
+
+        <!-- nodes -->
+        <rect class="node" x="305" y="20" width="150" height="40" rx="7" />
+        <text class="file" x="380" y="45" text-anchor="middle">scripts/ingest.ts</text>
+
+        <rect class="node" x="110" y="110" width="150" height="40" rx="7" />
+        <text class="file" x="185" y="135" text-anchor="middle">channel.ts</text>
+
+        <rect class="node" x="500" y="110" width="150" height="40" rx="7" />
+        <text class="file" x="575" y="135" text-anchor="middle">pipeline.ts</text>
+
+        <rect class="node" x="20" y="210" width="150" height="40" rx="7" />
+        <text class="file" x="95" y="235" text-anchor="middle">util/pool.ts</text>
+
+        <rect class="node" x="305" y="210" width="150" height="40" rx="7" />
+        <text class="file" x="380" y="235" text-anchor="middle">youtube-loader.ts</text>
+
+        <rect class="node w" x="305" y="300" width="150" height="40" rx="7" />
+        <text class="file" x="380" y="325" text-anchor="middle">whisper.ts</text>
+
+        <rect class="node pure" x="305" y="390" width="150" height="40" rx="7" />
+        <text class="file" x="380" y="415" text-anchor="middle">youtube-url.ts</text>
+        <text class="s i" x="380" y="444" text-anchor="middle">pure · dependency-free · the only owner of identity</text>
+      </svg>
+      <figcaption>Arrows point from importer to imported. domain/types.ts (SourceLoader, Transcript, SourceRef) is imported by all of them and omitted for clarity.</figcaption>
+    </figure>
+
+    <div class="col">
+      <p>Read the arrows as a hierarchy of who is allowed to know what. The CLI knows about channels and single videos. <code>channel.ts</code> knows how to fan out. <code>pipeline.ts</code> knows the write recipe but takes its loader as an argument, so it never names YouTube inside <code>ingestSource()</code>. The loader knows YouTube. Whisper knows audio. The URL module knows regexes. A future book loader plugs in beside <code>youtube-loader.ts</code> and nothing above it changes.</p>
+    </div>
+  </section>
+
+  <!-- ============ PILLAR 1: DISCOVER ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker i"><span class="dot"></span>Pillar 1 · Discover</p>
+      <h2>Finding every upload without a key</h2>
+      <p>The first version of this PR used YouTube's public RSS feed. It is the simplest thing that works, and it was rejected in review for one reason: <strong>the feed stops at the newest fifteen or so uploads</strong>. For a two-video test that is invisible. For a channel with hundreds of videos it silently delivers a sliver of the catalog while looking like success. The product contract says "entire catalog", so the loader now walks the channel's Videos tab through <code>youtubei.js</code> (Innertube, the same internal API the YouTube client uses) and follows continuation tokens until the tab runs out.</p>
+    </div>
+
+    <figure class="figure">
+      <svg viewBox="0 0 720 170" role="img" aria-label="Reach comparison: the RSS feed exposes only the newest roughly fifteen uploads, while Innertube paging continues through every page of the Videos tab until exhausted or a caller-set limit.">
+        <defs>
+          <pattern id="vids" x="0" y="0" width="14" height="14" patternUnits="userSpaceOnUse">
+            <rect x="1" y="1" width="11" height="11" rx="2" fill="var(--ingest)" opacity="0.85" />
+          </pattern>
+          <pattern id="vids-ghost" x="0" y="0" width="14" height="14" patternUnits="userSpaceOnUse">
+            <rect x="1" y="1" width="11" height="11" rx="2" fill="none" stroke="var(--muted)" stroke-dasharray="2 2" />
+          </pattern>
+          <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)" />
+          </marker>
+        </defs>
+
+        <text class="t" x="20" y="44">RSS feed</text>
+        <text class="s" x="20" y="60">first attempt</text>
+        <rect x="150" y="30" width="210" height="14" fill="url(#vids)" />
+        <rect x="364" y="30" width="336" height="14" fill="url(#vids-ghost)" />
+        <text class="s bad" x="364" y="62">newest ~15 only, the rest is unreachable</text>
+
+        <text class="t" x="20" y="114">Innertube</text>
+        <text class="s i" x="20" y="130">shipped</text>
+        <rect x="150" y="100" width="210" height="14" fill="url(#vids)" />
+        <rect x="368" y="100" width="210" height="14" fill="url(#vids)" />
+        <rect x="586" y="100" width="114" height="14" fill="url(#vids)" />
+        <text class="s" x="150" y="132">getVideos()</text>
+        <text class="s" x="368" y="132">getContinuation()</text>
+        <text class="s" x="586" y="132">… until exhausted</text>
+        <line x1="150" y1="146" x2="700" y2="146" stroke="var(--muted)" stroke-width="1" marker-end="url(#ah3)" />
+        <text class="s i" x="425" y="158" text-anchor="middle">or stop early at --limit N (an N-video run pays for N, not the catalog)</text>
+      </svg>
+      <figcaption>Each square is one upload, newest on the left. Only the second track reaches the end of a real channel.</figcaption>
+    </figure>
+
+    <div class="col">
+      <h4>Any way of naming a channel works</h4>
+      <p><code>resolveChannelId()</code> accepts whatever a person is likely to paste and returns the canonical 24-character UC id. Cheap, local checks run first; only the ambiguous forms go to the network.</p>
+      <ul class="inputs">
+        <li><code>UCxxxxxxxxxxxxxxxxxxxxxx</code><span class="how">used as is, no request</span></li>
+        <li><code>…/channel/UC…</code><span class="how">id read out of the URL, no request</span></li>
+        <li><code>@AlexHormozi</code> / <code>AlexHormozi</code><span class="how">Innertube <code>resolveURL</code> → browseId</span></li>
+        <li><code>youtube.com/c/legacy-name</code><span class="how">same resolver, handles legacy paths</span></li>
+        <li><code>youtu.be/o64cI6tebnU</code><span class="how">video → its owner via the video's own info</span></li>
+        <li><code>UCsomething-that-is-a-handle</code><span class="how">not 24 chars, so treated as a handle</span></li>
+      </ul>
+      <p class="note i">That last row is a real bug the review caught. An unanchored regex treated any string starting with <code>UC</code> as a channel id and built a dead <code>/channel/</code> URL from a long handle. Now the id patterns are anchored and built from one string constant in <code>youtube-url.ts</code>, so the check cannot drift between callers.</p>
+      <p>One Innertube session is created lazily per process and shared. <code>Innertube.create()</code> is itself a network round trip for client config, so paying it once per channel rather than once per resolve matters at catalog scale.</p>
+    </div>
+
+    <div class="col io">
+      <div class="io-head">youtubeLoader.discover() <span class="file">src/server/ingest/youtube-loader.ts</span></div>
+      <div class="io-grid">
+        <div class="io-cell">
+          <div class="io-label">Takes in</div>
+          <span class="mono">scope: string</span>
+          <span class="mono">opts?: { limit?: number }</span>
+          <p class="desc">Any channel reference from the list above, and an optional cap on how many uploads to yield.</p>
+        </div>
+        <div class="io-arrow" aria-hidden="true">→</div>
+        <div class="io-cell">
+          <div class="io-label">Yields</div>
+          <span class="mono">AsyncIterable&lt;SourceRef&gt;</span>
+          <span class="mono">= { kind: "youtube_video", externalId }</span>
+          <p class="desc">One reference per upload, newest first, streamed as pages arrive. Nothing is loaded yet; a ref is just an identity.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ THE SEAM ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker i"><span class="dot"></span>The seam</p>
+      <h2>SourceLoader grew up</h2>
+      <p>The design contract (DESIGN.md §4a) has always said ingestion is source-agnostic: books are a new loader, not a rewrite. Slice&nbsp;3 is the first time that seam was put under load, and it changed shape in two ways that are worth reading side by side.</p>
+    </div>
+
+    <div class="col beforeafter">
+      <div>
+        <p class="ba-h">Before · Slice 2</p>
+<pre class="code"><code>interface SourceLoader {
+  discover(): AsyncIterable&lt;SourceRef&gt;;
+  load(ref): Promise&lt;LoadedSource&gt;;
+}
+type LoadedSource = {
+  source: SourceMeta;
+  segments: Segment[];
+};
+
+<span class="cm">// pipeline knew YouTube:</span>
+ingestVideo(input) {
+  const id = <span class="del">toVideoId(input)</span>;
+  <span class="cm">// …load, hash, write</span>
+}</code></pre>
+      </div>
+      <div>
+        <p class="ba-h">After · Slice 3</p>
+<pre class="code"><code>interface SourceLoader {
+  discover(<span class="hl">scope</span>, opts?: { limit? })
+    : AsyncIterable&lt;SourceRef&gt;;
+  <span class="hl">loadTranscript</span>(ref): Promise&lt;Transcript&gt;;
+  <span class="hl">loadMeta</span>(ref): Promise&lt;SourceMeta&gt;;
+}
+type Transcript = {
+  segments: Segment[];
+  <span class="hl">provenance</span>: "captions" | "whisper";
+};
+
+<span class="cm">// pipeline knows nothing:</span>
+ingestSource(ref, <span class="hl">loader</span>) { <span class="cm">// kind from ref</span> }
+ingestVideo(input) =
+  ingestSource({ kind, externalId: toVideoId(input) }, youtubeLoader);</code></pre>
+      </div>
+    </div>
+
+    <div class="col">
+      <ul>
+        <li><strong>One call became two.</strong> <code>loadTranscript()</code> is the expensive call that drives the idempotency hash. <code>loadMeta()</code> is deferred until the pipeline has decided to write. This is the whole reason a no-op re-run is now free.</li>
+        <li><strong>Provenance travels with the segments.</strong> A transcript says where it came from, and the pipeline persists that in <code>source.metadata</code>. That single field is what lets gate&nbsp;1 skip a Whisper video without loading anything.</li>
+        <li><strong>The orchestrator is generic.</strong> <code>ingestSource(ref, loader)</code> never names a source kind. <code>ingestVideo()</code> is a three-line wrapper that canonicalizes the input once and hands over the YouTube loader. A book loader gets the same treatment.</li>
+      </ul>
+      <p>Everything else about the write is unchanged from Slice&nbsp;2 and still matters: all remote work (transcript, contexts, embeddings) happens before any write, and the source hash plus the chunk swap commit in one transaction. A failed embed can never leave a fresh hash pointing at missing chunks, which the next run would then wrongly skip.</p>
+    </div>
+  </section>
+
+  <!-- ============ PILLAR 2: INGEST AT SCALE ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker i"><span class="dot"></span>Pillar 2 · Ingest at scale</p>
+      <h2>Many videos, one honest answer</h2>
+      <p><code>ingestChannel()</code> is short, and its shortness is the point: it collects the refs from <code>discover()</code>, then runs <code>ingestSource()</code> over them through the shared <code>mapPool()</code> helper with three videos in flight. Every design question it answers is about <em>failure</em>.</p>
+    </div>
+
+    <div class="col io">
+      <div class="io-head">ingestChannel() <span class="file">src/server/ingest/channel.ts</span></div>
+      <div class="io-grid">
+        <div class="io-cell">
+          <div class="io-label">Takes in</div>
+          <span class="mono">channel: string</span>
+          <span class="mono">opts?: { concurrency?, limit?,</span>
+          <span class="mono">&nbsp;&nbsp;onProgress?(outcome) }</span>
+          <p class="desc">A channel ref, an optional cap, and a callback the CLI uses to print each video as it finishes.</p>
+        </div>
+        <div class="io-arrow" aria-hidden="true">→</div>
+        <div class="io-cell">
+          <div class="io-label">Gives back</div>
+          <span class="mono">ChannelIngestResult</span>
+          <span class="mono">= { discovered, ingested, skipped,</span>
+          <span class="mono">&nbsp;&nbsp;&nbsp;failed, outcomes: VideoOutcome[] }</span>
+          <p class="desc">Counts plus one outcome per video, in discovery order regardless of which finished first.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <h4>Every video ends in exactly one of three states</h4>
+      <div class="chips">
+        <div class="chip ok"><div class="k"><span class="pip"></span>ingested</div><p>New or changed transcript. Chunks were written; the title and chunk count come back.</p></div>
+        <div class="chip sk"><div class="k"><span class="pip"></span>skipped</div><p>Hash unchanged, or already Whisper-transcribed. Nothing written, nothing paid.</p></div>
+        <div class="chip bad"><div class="k"><span class="pip"></span>failed</div><p>Anything threw: no captions with the fallback off, a rate limit, a 25&nbsp;MB audio file. The error message is kept.</p></div>
+      </div>
+      <p><strong>Failure is isolated, not fatal.</strong> <code>mapPool()</code> itself fails fast: if the worker function throws, no new work starts. That is right for the contextualizer, where one doomed model call means the whole video is lost anyway. It would be wrong for a channel, where one caption-less video should not sink the other four hundred. So <code>channel.ts</code> catches per video inside the worker and turns the throw into a <code>failed</code> outcome, and the pool never sees an exception. The outcome is built once, in a single <code>then(onOk, onErr)</code>, and reported once, so any future change to reporting has one home.</p>
+      <p><strong>The exit code is the contract.</strong> A cron or CI step must not read a stale corpus as success. <code>pnpm ingest --channel</code> exits non-zero when any video failed <em>or</em> when nothing was indexed at all (a paused database, a bad key, an empty discovery). A run that quietly did nothing looks identical to a healthy one without this rule.</p>
+    </div>
+
+    <div class="col cli">
+      <div class="row"><span class="cmd">pnpm ingest <span class="flag">--channel</span> @AlexHormozi</span><span class="exp">Discover and ingest every upload. Exit 1 on any failure.</span></div>
+      <div class="row"><span class="cmd">pnpm ingest <span class="flag">--channel</span> @AlexHormozi <span class="flag">--limit</span> 5</span><span class="exp">Newest five only. Pays for five, not the catalog.</span></div>
+      <div class="row"><span class="cmd"><span class="env">WHISPER_FALLBACK=true</span> pnpm ingest <span class="flag">--channel</span> UC…</span><span class="exp">Same, but caption-less videos are transcribed instead of failing.</span></div>
+      <div class="row"><span class="cmd">pnpm ingest o64cI6tebnU</span><span class="exp">Single video, as before. Unchanged behaviour.</span></div>
+    </div>
+  </section>
+
+  <!-- ============ PILLAR 3: WHISPER ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker w"><span class="dot"></span>Pillar 3 · Whisper fallback</p>
+      <h2>A way in for silent videos</h2>
+      <p>Some videos have captions disabled. Without a transcript they cannot be in the corpus, and a creator's best talk is sometimes exactly the one with no captions. The fallback downloads the lowest-bitrate audio-only stream, sends it to a speech-to-text model through the AI Gateway (<code>openai/whisper-1</code> by default, one env knob), and converts the result into the same <code>Segment[]</code> the caption path produces. From the pipeline's point of view the two sources are indistinguishable except for the provenance tag.</p>
+      <p>The interesting engineering is in <strong>when it is allowed to fire</strong>. The naive version, "captions failed, try Whisper", was rejected in review because a YouTube rate limit would fan out into a paid transcription for every video in the batch. The shipped rule is precise:</p>
+    </div>
+
+    <figure class="figure">
+      <svg viewBox="0 0 760 350" role="img" aria-label="Decision tree for transcript loading: fetch English captions; a missing-language error retries the default track; one or more segments means captions; a disabled, not-available, or zero-segment result means genuinely no captions and goes to Whisper only if the flag is on, else throws; any other error such as rate limit is rethrown and never reaches Whisper.">
+        <defs>
+          <marker id="ah4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+          </marker>
+          <marker id="ah4-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--pass)" />
+          </marker>
+          <marker id="ah4-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--fail)" />
+          </marker>
+          <marker id="ah4-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--whisper)" />
+          </marker>
+        </defs>
+
+        <!-- root -->
+        <rect class="box" x="255" y="16" width="250" height="48" rx="8" />
+        <text class="t" x="380" y="36" text-anchor="middle">fetchTranscript(id, lang: "en")</text>
+        <text class="s" x="380" y="52" text-anchor="middle">youtube-transcript</text>
+
+        <!-- fan-out lines -->
+        <line class="edge" x1="330" y1="64" x2="110" y2="118" marker-end="url(#ah4)" />
+        <line class="edge ok" x1="360" y1="64" x2="290" y2="118" marker-end="url(#ah4-ok)" />
+        <line class="edge w" x1="400" y1="64" x2="470" y2="118" marker-end="url(#ah4-w)" />
+        <line class="edge bad" x1="430" y1="64" x2="650" y2="118" marker-end="url(#ah4-bad)" />
+
+        <!-- four outcomes -->
+        <rect class="box" x="20" y="120" width="170" height="60" rx="8" />
+        <text class="t" x="105" y="143" text-anchor="middle">NotAvailableLanguage</text>
+        <text class="s" x="105" y="160" text-anchor="middle">retry the default track</text>
+        <text class="s" x="105" y="173" text-anchor="middle">(the only retry)</text>
+
+        <rect class="box ok" x="200" y="120" width="170" height="60" rx="8" />
+        <text class="t" x="285" y="143" text-anchor="middle">≥ 1 segment</text>
+        <text class="s ok" x="285" y="160" text-anchor="middle">provenance: "captions"</text>
+        <text class="s" x="285" y="173" text-anchor="middle">toSeconds() fixes ms/s</text>
+
+        <rect class="box w" x="380" y="120" width="180" height="60" rx="8" />
+        <text class="t" x="470" y="140" text-anchor="middle">Disabled · NotAvailable</text>
+        <text class="t" x="470" y="155" text-anchor="middle">· zero segments</text>
+        <text class="s w" x="470" y="172" text-anchor="middle">genuinely no captions</text>
+
+        <rect class="box bad" x="570" y="120" width="170" height="60" rx="8" />
+        <text class="t" x="655" y="140" text-anchor="middle">rate limit · unavailable</text>
+        <text class="t" x="655" y="155" text-anchor="middle">· network</text>
+        <text class="s bad" x="655" y="172" text-anchor="middle">rethrow, never Whisper</text>
+
+        <!-- retry loops back to segments -->
+        <line class="edge faint" x1="190" y1="150" x2="198" y2="150" marker-end="url(#ah4)" />
+
+        <!-- gate under "no captions" -->
+        <line class="edge w" x1="470" y1="180" x2="470" y2="210" marker-end="url(#ah4-w)" />
+        <rect class="box gate" x="385" y="212" width="170" height="44" rx="8" />
+        <text class="t" x="470" y="233" text-anchor="middle">WHISPER_FALLBACK on?</text>
+        <text class="s" x="470" y="248" text-anchor="middle">default: false</text>
+
+        <line class="edge w" x1="430" y1="256" x2="390" y2="290" marker-end="url(#ah4-w)" />
+        <text class="s w" x="400" y="272" text-anchor="end">yes</text>
+        <line class="edge bad" x1="510" y1="256" x2="560" y2="290" marker-end="url(#ah4-bad)" />
+        <text class="s bad" x="545" y="272" text-anchor="start">no</text>
+
+        <rect class="box w" x="230" y="292" width="200" height="50" rx="8" />
+        <text class="t" x="330" y="312" text-anchor="middle">transcribeWithWhisper()</text>
+        <text class="s w" x="330" y="329" text-anchor="middle">lowestaudio · ≤ 25 MB</text>
+
+        <rect class="box bad" x="480" y="292" width="200" height="50" rx="8" />
+        <text class="t" x="580" y="312" text-anchor="middle">throw "No caption track"</text>
+        <text class="s bad" x="580" y="329" text-anchor="middle">→ that video's outcome: failed</text>
+      </svg>
+      <figcaption>loadTranscript() in youtube-loader.ts. Only the rust path can spend money, and only behind the flag.</figcaption>
+    </figure>
+
+    <div class="col">
+      <h4>Three guards inside the rust path</h4>
+      <ul>
+        <li><strong>Size, before and during download.</strong> Whisper rejects uploads over 25&nbsp;MB. The declared <code>contentLength</code> is checked before a byte moves; for formats that do not declare one, the running byte count is checked while streaming and the stream is destroyed the moment it crosses the cap. The first version downloaded everything and then got a 413. At the lowest audio bitrate, 25&nbsp;MB is roughly seventy minutes of speech, which covers most talks. Splitting longer audio with offset timestamps is a known next lever, not built.</li>
+        <li><strong>Lowest bitrate on purpose.</strong> Speech-to-text gains nothing from high-quality audio, and it keeps far longer videos under the cap.</li>
+        <li><strong>Never twice.</strong> Provenance is persisted, so gate&nbsp;1 in the pipeline skips a Whisper video before <code>loadTranscript()</code> is even called. Re-running a channel with the flag on costs nothing for videos already transcribed.</li>
+      </ul>
+      <p class="note w">Whisper segments carry start and end in seconds, so <code>toSegments()</code> is a straight mapping. The caption path is messier: the library reports offsets in milliseconds on one code path and seconds on another, with no flag. <code>toSeconds()</code> now combines two signals (median caption duration above 100, or a max offset beyond 24 hours of seconds) so a track whose durations are all zero no longer deep-links to <code>?t=1200000</code>.</p>
+    </div>
+  </section>
+
+  <!-- ============ LOAD-BEARING DECISIONS ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker n"><span class="dot"></span>The load-bearing 20%</p>
+      <h2>Decisions that ripple</h2>
+      <p>Most of the diff is plumbing that conforms to a handful of decisions. These are the ones that would be expensive to reverse, in the order they matter, with what each one buys and what undoing it would cost.</p>
+    </div>
+
+    <div class="col tablewrap" style="max-width: var(--wide)">
+      <table>
+        <thead><tr><th>Decision</th><th>Why it is load-bearing</th><th>If reversed</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="pill i">discover</span><br /><span class="dname">Innertube, not RSS</span></td>
+            <td class="dwhy">RSS caps at ~15 uploads. "Entire catalog" is the product; a source that silently truncates fails the contract while reporting success.</td>
+            <td class="dcost">Large channels lose most of their history and nobody notices until a user asks about an old video.</td>
+          </tr>
+          <tr>
+            <td><span class="pill i">seam</span><br /><span class="dname">ingestSource(ref, loader) is source-agnostic</span></td>
+            <td class="dwhy">The pipeline never names YouTube. Kind comes from the ref, the loader is injected. This is the seam the book loader will land on.</td>
+            <td class="dcost">Books become a second pipeline, and every fix to hashing or the transaction has to be made twice.</td>
+          </tr>
+          <tr>
+            <td><span class="pill i">seam</span><br /><span class="dname">loadTranscript() and loadMeta() are separate</span></td>
+            <td class="dwhy">The hash is computed from the transcript alone, so a no-op re-run never pays for metadata. Catalog re-runs are cheap.</td>
+            <td class="dcost">Every nightly run makes one oEmbed request per video for no reason, and the "cheap re-run" story collapses at scale.</td>
+          </tr>
+          <tr>
+            <td><span class="pill w">whisper</span><br /><span class="dname">Provenance is persisted; Whisper is final</span></td>
+            <td class="dwhy">A Whisper video skips before any load. The most expensive step in ingest can only ever be paid once per video.</td>
+            <td class="dcost">Re-runs re-download audio and re-pay STT for every caption-less video, every time.</td>
+          </tr>
+          <tr>
+            <td><span class="pill w">whisper</span><br /><span class="dname">Fallback only on genuine "no captions"</span></td>
+            <td class="dwhy">Disabled, NotAvailable, or zero segments. Rate limits, unavailable videos and network errors propagate instead. A throttle cannot fan out into N paid transcriptions.</td>
+            <td class="dcost">One bad afternoon of YouTube rate limiting becomes a surprise bill and a corpus of transcripts that should have been free captions.</td>
+          </tr>
+          <tr>
+            <td><span class="pill w">whisper</span><br /><span class="dname">Off by default, 25 MB fail-fast</span></td>
+            <td class="dwhy">The fallback pulls audio at ingest time. Nobody should pay for that without flipping a switch, and never after a full download.</td>
+            <td class="dcost">A first-time <code>pnpm ingest --channel</code> quietly downloads hours of audio.</td>
+          </tr>
+          <tr>
+            <td><span class="pill i">identity</span><br /><span class="dname">youtube-url.ts owns every id pattern</span></td>
+            <td class="dwhy">One string constant per pattern, anchored, imported by loader and Whisper alike. This is what broke the import cycle and fixed the UC-handle bug.</td>
+            <td class="dcost">The video-id and channel-id regexes drift between callers again, and the loader/Whisper cycle comes back.</td>
+          </tr>
+          <tr>
+            <td><span class="pill i">failure</span><br /><span class="dname">Isolate per video in channel.ts; fail fast in mapPool</span></td>
+            <td class="dwhy">The pool stays a generic primitive. The channel layer decides that one video's failure is survivable, and records it.</td>
+            <td class="dcost">Either the first caption-less video aborts a 400-video run, or the pool learns channel-specific rules it should not know.</td>
+          </tr>
+          <tr>
+            <td><span class="pill i">contract</span><br /><span class="dname">Non-zero exit if any failed or nothing indexed</span></td>
+            <td class="dwhy">CI and cron read exit codes, not logs. A run that did nothing must not pass.</td>
+            <td class="dcost">A paused database or a bad key produces a green pipeline and a stale corpus.</td>
+          </tr>
+          <tr>
+            <td><span class="pill i">hygiene</span><br /><span class="dname">Dropped YOUTUBE_API_KEY</span></td>
+            <td class="dwhy">No Data-API code path exists. Dead config invites a future contributor to build on a key nothing reads.</td>
+            <td class="dcost">Minor, but it would be the first lie in <code>.env.example</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ RIDING ALONG: PR #7 ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker f"><span class="dot"></span>Riding along · PR #7</p>
+      <h2>The Slice&nbsp;2 fixes in this diff</h2>
+      <p>On 2026-09-06 the first real corpus went in: two Alex Hormozi "Scale or Fail" episodes, 81 chunks. Running Slice&nbsp;2 end to end on real data found three things. They were fixed on a separate branch (PR&nbsp;#7, merged to <code>main</code>) and merged into this branch so PR&nbsp;#6 stays reviewable. You will see them in the diff against <code>main</code>; they are not Slice&nbsp;3 work.</p>
+      <ul>
+        <li><strong>Every query on main was broken.</strong> The Slice&nbsp;2 hydrate query used <code>ANY(${ids}::uuid[])</code>. Drizzle expands a bare JavaScript array into a row value, not a Postgres array, so Postgres refused to cast a record to <code>uuid[]</code>. One helper, <code>uuidArray()</code>, now binds the array as a single parameter via <code>sql.param</code>. Both places that filter by id use it.</li>
+        <li><strong>The context blurb now rides on the query path.</strong> <code>Evidence.context</code> carries the Contextual-Retrieval blurb; <code>evidenceText()</code> renders it as a "Context:" line in the packet the model reads, the judges grade against that same string, and the reranker scores <code>context + "\n" + text</code>, the exact string that was embedded. Measured without it: about a quarter of questions naming an entity only the blurb mentions were wrongly refused, and reranking promoted intro chunks. After: both modes pass the gate.</li>
+        <li><strong>The golden set is now the Hormozi set.</strong> Seventeen answerable cases across both videos plus four refusal cases, including world-knowledge traps like "How did Alex start Gym Launch?" that the model knows but the corpus never says. <code>pnpm eval --verbose</code> prints each case's decision, scores, citations and answer.</li>
+      </ul>
+      <p class="note">The "context on the query path" change is a real shift in what the model reads, and it is not yet written into <code>docs/DESIGN.md</code> §4b. Worth locking in the next time that file is touched.</p>
+    </div>
+  </section>
+
+  <!-- ============ READING ORDER ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker i"><span class="dot"></span>Reading order</p>
+      <h2>What to read, and in what order</h2>
+      <p>Top-down, contract first. Each step assumes the one before it. Green is Slice&nbsp;3 proper, rust is the Whisper path, violet is the PR&nbsp;#7 material. Roughly forty minutes for the whole list.</p>
+      <ol class="flow">
+        <li><span class="f-name">docs/DESIGN.md</span><span class="f-min">4 min</span><span class="f-why">The "Slice 3 status" paragraph near the top and §4a. This is the contract everything below implements.</span></li>
+        <li><span class="f-name">src/server/domain/types.ts</span><span class="f-min">3 min</span><span class="f-why"><code>SourceLoader</code>, <code>Transcript</code>, <code>TranscriptProvenance</code>, <code>SourceRef</code>. The doc comments say why each method exists.</span></li>
+        <li><span class="f-name">src/server/ingest/youtube-url.ts</span><span class="f-min">3 min</span><span class="f-why">The pure leaf. Notice the two pattern constants at the top and that every regex is built from them.</span></li>
+        <li><span class="f-name">src/server/ingest/pipeline.ts</span><span class="f-min">6 min</span><span class="f-why"><code>ingestSource()</code> and its header comment. Find the two gates and the transaction. Confirm nothing in it says "YouTube".</span></li>
+        <li><span class="f-name">src/server/ingest/youtube-loader.ts</span><span class="f-min">8 min</span><span class="f-why">Read <code>resolveChannelId()</code>, <code>listUploads()</code>, then <code>loadTranscript()</code> and <code>isNoCaptionsError()</code>. The decision tree above is this file.</span></li>
+        <li class="w"><span class="f-name">src/server/ingest/whisper.ts</span><span class="f-min">4 min</span><span class="f-why"><code>fetchAudio()</code> for the two size checks, <code>toSegments()</code> for why there is no unit ambiguity here.</span></li>
+        <li><span class="f-name">src/server/util/pool.ts</span><span class="f-min">2 min</span><span class="f-why">Already existed; re-read the "fail fast" paragraph so the next file's per-video catch makes sense.</span></li>
+        <li><span class="f-name">src/server/ingest/channel.ts</span><span class="f-min">3 min</span><span class="f-why">The fan-out, the outcome union, the single <code>then(onOk, onErr)</code>.</span></li>
+        <li><span class="f-name">scripts/ingest.ts</span><span class="f-min">2 min</span><span class="f-why">The CLI, and the one boolean that becomes the exit code.</span></li>
+        <li><span class="f-name">youtube-url.test.ts · youtube-loader.test.ts · whisper.test.ts</span><span class="f-min">4 min</span><span class="f-why">The tests are the spec for identity parsing, the ms/s heuristic, and the segment mapping. The UC-handle case and the zero-duration case are the two review bugs, pinned.</span></li>
+        <li class="f"><span class="f-name">src/server/retrieval/retrieve.ts · domain/citations.ts</span><span class="f-min">4 min</span><span class="f-why">PR #7: <code>uuidArray()</code>, <code>context_text</code> in hydrate, the rerank input string, and <code>evidenceText()</code>.</span></li>
+        <li class="f"><span class="f-name">src/server/evals/golden.ts</span><span class="f-min">3 min</span><span class="f-why">PR #7: skim the case ids and the refusal traps at the bottom. The notes are the expected answers.</span></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ STILL OPEN ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker n"><span class="dot"></span>Still open</p>
+      <h2>What this PR does not do</h2>
+      <ul>
+        <li><strong>It has not been run against a real channel yet.</strong> End-to-end testing on 2026-09-06 was done on <code>main</code> (Slice&nbsp;2) with two hand-picked videos. The first <code>pnpm ingest --channel @AlexHormozi --limit N</code> run is the next thing to do after merge, and the golden set should grow with the corpus.</li>
+        <li><strong>Audio over 25&nbsp;MB is skipped, not split.</strong> Chunking long audio into sub-25&nbsp;MB pieces with offset timestamps is the known next lever for the Whisper path.</li>
+        <li><strong>The caption unit heuristic is still a heuristic.</strong> One shape (a seconds-based track whose few cues each run over 100&nbsp;s) cannot be disambiguated. The durable fix is to pin the caption format the library requests.</li>
+        <li><strong>The hedged-refusal question is unresolved.</strong> Near-miss questions currently produce a refusal sentence followed by "the evidence does show…". The contract says an exact refusal. Strict refusal versus refuse-plus-nearest is a product call, still open.</li>
+        <li><strong>The book loader is the real test of the seam.</strong> Until a second <code>SourceLoader</code> exists, source-agnosticism is a design claim, not a demonstrated one.</li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="col">
+      <p class="oneline">One command, the whole catalog, and nothing paid for twice.</p>
+      <p><strong>Slice 3 in one line:</strong> discover every upload of a channel without an API key, ingest them three at a time through the same idempotent pipeline with per-video failure isolation, and reach caption-less videos through a flag-gated Whisper fallback that can only fire on a genuine "no captions" and only ever pays once.</p>
+      <p style="margin-top:1rem">PR #6 · open, base <code>main</code> · 21 files, +1070 / −244 · typecheck clean, tests green</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var btn = document.getElementById("themeToggle");
+    var root = document.documentElement;
+    function current() {
+      var set = root.getAttribute("data-theme");
+      if (set) return set;
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    btn.addEventListener("click", function () {
+      root.setAttribute("data-theme", current() === "dark" ? "light" : "dark");
+    });
+  })();
+</script>
+</body>
+</html>

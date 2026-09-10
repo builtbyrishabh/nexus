@@ -43,7 +43,12 @@ export const source = createTable(
     externalId: text("external_id").notNull(), // videoId; unique per kind
     title: text("title").notNull(),
     url: text("url").notNull(),
-    author: text("author"), // channel name
+    author: text("author"), // channel name (free-text, as the platform reports it)
+    // Creator tenancy seam (Slice 4 / Panel): a stable slug, e.g. "hormozi", that scopes
+    // retrieval to one creator's catalog. Deliberately NOT a table — the display name and
+    // panel lineup live in a code constant (src/server/domain/creators.ts); when the
+    // community bot (#14) needs per-tenant config rows, this promotes to a FK then (ETC).
+    creatorHandle: text("creator_handle"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     contentHash: text("content_hash").notNull(), // idempotent re-ingest
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
@@ -54,7 +59,11 @@ export const source = createTable(
       () => new Date(),
     ),
   },
-  (t) => [uniqueIndex("source_kind_external_idx").on(t.kind, t.externalId)],
+  (t) => [
+    uniqueIndex("source_kind_external_idx").on(t.kind, t.externalId),
+    // Panel retrieval filters every query by one creator; index the scope column.
+    index("source_creator_idx").on(t.creatorHandle),
+  ],
 );
 
 /**

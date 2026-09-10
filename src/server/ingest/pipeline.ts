@@ -78,6 +78,7 @@ export function contentHashOf(transcript: Transcript): string {
 export async function ingestSource(
   ref: SourceRef,
   loader: SourceLoader,
+  opts?: { creatorHandle?: string },
 ): Promise<Exclude<IngestResult, { status: "failed" }>> {
   const existing = await db.query.source.findFirst({
     where: and(
@@ -124,6 +125,12 @@ export async function ingestSource(
 
   // Atomic swap: upsert the source (hash included), replace its chunks. The new hash is only
   // durable once every replacement row is in — no window where the hash is ahead of the data.
+  // Only carry the creator tag when one was supplied, so a re-ingest without `--creator` never
+  // nulls a handle set on a prior run (the tag is the tenancy scope, not per-transcript content).
+  const creatorTag = opts?.creatorHandle
+    ? { creatorHandle: opts.creatorHandle }
+    : {};
+
   const result = await db.transaction(async (tx) => {
     const [saved] = await tx
       .insert(sourceTable)
@@ -136,6 +143,7 @@ export async function ingestSource(
         publishedAt: meta.publishedAt,
         contentHash,
         metadata,
+        ...creatorTag,
       })
       .onConflictDoUpdate({
         target: [sourceTable.kind, sourceTable.externalId],
@@ -145,6 +153,7 @@ export async function ingestSource(
           author: meta.author,
           contentHash,
           metadata,
+          ...creatorTag,
         },
       })
       .returning();
@@ -177,9 +186,10 @@ export async function ingestSource(
 }
 
 /** A video is just a video: accepts a video ID or any YouTube URL, never widens to the channel. */
-export function ingestVideo(input: string) {
+export function ingestVideo(input: string, opts?: { creatorHandle?: string }) {
   return ingestSource(
     { kind: "youtube_video", externalId: toVideoId(input) },
     youtubeLoader,
+    opts,
   );
 }

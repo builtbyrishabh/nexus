@@ -52,6 +52,9 @@ function filterConditions(filter?: Filter): SQL[] {
     conditions.push(sql`c.source_id = ANY(${uuidArray(sourceIds)})`);
   }
   if (filter?.kind) conditions.push(sql`s.kind = ${filter.kind}`);
+  if (filter?.creatorHandle) {
+    conditions.push(sql`s.creator_handle = ${filter.creatorHandle}`);
+  }
   return conditions;
 }
 

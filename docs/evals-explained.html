@@ -1,0 +1,1673 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>How Nexus Grades Itself</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+<style>
+  :root {
+    --paper:      #EEF0EE;
+    --surface:    #FBFCFB;
+    --surface-2:  #F4F6F3;
+    --ink:        #15181C;
+    --ink-soft:   #3A4148;
+    --muted:      #6B7480;
+    --line:       #D8DCD8;
+    --line-soft:  #E6E9E5;
+    --ours:       #B57A12;   /* code Nexus owns */
+    --ours-bg:    #F6ECD6;
+    --mastra:     #2A54D6;   /* inside the Mastra judge */
+    --mastra-bg:  #E6ECFB;
+    --pass:       #1F8A52;
+    --pass-bg:    #E2F2E8;
+    --fail:       #C64239;
+    --fail-bg:    #F8E3E1;
+    --code-bg:    #F2F4F1;
+    --code-ink:   #23303f;
+    --hl-stripe:  rgba(181,122,18,.13);
+
+    --c-kw:  #8a3fb3;
+    --c-str: #1f7a3c;
+    --c-num: #b45309;
+    --c-fn:  #1d4fd7;
+    --c-cmt: #7a838d;
+    --c-ty:  #0e7490;
+
+    --lh: 21px;
+    --measure: 40rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #101317;
+      --surface:    #171B20;
+      --surface-2:  #1C2127;
+      --ink:        #E7EAEC;
+      --ink-soft:   #C2C8CD;
+      --muted:      #8A939D;
+      --line:       #2A3138;
+      --line-soft:  #232a31;
+      --ours:       #E7B85A;
+      --ours-bg:    #33290F;
+      --mastra:     #7EA0FF;
+      --mastra-bg:  #1B2440;
+      --pass:       #4BC585;
+      --pass-bg:    #16301F;
+      --fail:       #F0736A;
+      --fail-bg:    #3A1B18;
+      --code-bg:    #12171d;
+      --code-ink:   #cdd6e0;
+      --hl-stripe:  rgba(231,184,90,.12);
+      --c-kw:  #c792ea;
+      --c-str: #8fd19e;
+      --c-num: #f2b56b;
+      --c-fn:  #82aaff;
+      --c-cmt: #6f7a86;
+      --c-ty:  #7fd3e6;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:      #101317;
+    --surface:    #171B20;
+    --surface-2:  #1C2127;
+    --ink:        #E7EAEC;
+    --ink-soft:   #C2C8CD;
+    --muted:      #8A939D;
+    --line:       #2A3138;
+    --line-soft:  #232a31;
+    --ours:       #E7B85A;
+    --ours-bg:    #33290F;
+    --mastra:     #7EA0FF;
+    --mastra-bg:  #1B2440;
+    --pass:       #4BC585;
+    --pass-bg:    #16301F;
+    --fail:       #F0736A;
+    --fail-bg:    #3A1B18;
+    --code-bg:    #12171d;
+    --code-ink:   #cdd6e0;
+    --hl-stripe:  rgba(231,184,90,.12);
+    --c-kw:  #c792ea;
+    --c-str: #8fd19e;
+    --c-num: #f2b56b;
+    --c-fn:  #82aaff;
+    --c-cmt: #6f7a86;
+    --c-ty:  #7fd3e6;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  code, .mono, pre { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  p code, li code, td code, dd code, .note code {
+    font-size: .88em; background: var(--surface-2); border: 1px solid var(--line-soft);
+    border-radius: 3px; padding: .05em .35em; color: var(--ink);
+  }
+  a { color: inherit; }
+
+  /* ---------- top bar ---------- */
+  .bar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 1rem;
+    padding: .6rem 1.5rem;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line-soft);
+    font-size: .8rem; color: var(--muted);
+  }
+  .bar .name { font-family: "Instrument Serif", Georgia, serif; font-size: 1.05rem; color: var(--ink); letter-spacing: .01em; }
+  .bar .cur { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar .count { font-variant-numeric: tabular-nums; }
+  .bar .keys { display: none; }
+  @media (min-width: 900px) { .bar .keys { display: inline; } }
+  .bar kbd {
+    font: 500 .72rem "IBM Plex Mono", monospace; border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 .35em; color: var(--ink-soft); background: var(--surface);
+  }
+  .progress { position: absolute; left: 0; bottom: -1px; height: 2px; width: 0; background: var(--ours); transition: width .2s; }
+
+  /* ---------- slides ---------- */
+  .slide {
+    max-width: 92rem; margin: 0 auto;
+    padding: 3.5rem 1.5rem 4rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .slide:last-of-type { border-bottom: 0; }
+  .slide > header { max-width: 60rem; margin-bottom: 2rem; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: .5rem;
+    font: 500 .72rem/1 "IBM Plex Mono", monospace; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: .9rem;
+  }
+  .eyebrow .tag { padding: .3em .55em; border-radius: 3px; letter-spacing: .1em; }
+  .tag.ours   { background: var(--ours-bg);   color: var(--ours); }
+  .tag.mastra { background: var(--mastra-bg); color: var(--mastra); }
+  .tag.pure   { background: var(--surface-2); color: var(--ink-soft); border: 1px solid var(--line); }
+  h1, h2 {
+    font-family: "Instrument Serif", Georgia, serif; font-weight: 400; letter-spacing: -.005em;
+    text-wrap: balance; margin: 0;
+  }
+  h1 { font-size: clamp(2.6rem, 6vw, 4.6rem); line-height: 1.02; }
+  h2 { font-size: clamp(1.8rem, 3.2vw, 2.6rem); line-height: 1.1; }
+  h2 em, h1 em { font-style: italic; color: var(--ours); }
+  .lede { font-size: 1.12rem; color: var(--ink-soft); max-width: var(--measure); margin: 1rem 0 0; text-wrap: pretty; }
+  h3 { font-size: 1rem; font-weight: 600; margin: 0 0 .4rem; letter-spacing: -.005em; }
+
+  .grid {
+    display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 2rem 2.5rem; align-items: start;
+  }
+  @media (max-width: 960px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .grid .explain { max-width: var(--measure); }
+  .explain p { margin: 0 0 1rem; text-wrap: pretty; }
+  .explain ul, .explain ol { margin: 0 0 1rem; padding-left: 1.2rem; }
+  .explain li { margin-bottom: .45rem; }
+  .explain li::marker { color: var(--muted); }
+  .sticky { position: sticky; top: 3.2rem; }
+  @media (max-width: 960px) { .sticky { position: static; } }
+
+  /* line refs inside prose */
+  .ln {
+    font: 500 .72rem "IBM Plex Mono", monospace; color: var(--ours);
+    background: var(--ours-bg); border-radius: 3px; padding: .1em .4em; white-space: nowrap; vertical-align: .08em;
+  }
+  .ln.m { color: var(--mastra); background: var(--mastra-bg); }
+
+  /* weight badges: how much attention a function deserves */
+  .weight {
+    display: inline-block; font: 500 .68rem/1 "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase;
+    padding: .35em .6em; border-radius: 3px; margin-left: .5rem; vertical-align: middle;
+  }
+  .weight.core { background: var(--ours); color: var(--surface); }
+  .weight.glue { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+
+  /* ---------- code figure ---------- */
+  figure.code { margin: 0 0 1.25rem; border: 1px solid var(--line); border-radius: 6px; background: var(--code-bg); overflow: hidden; }
+  figure.code figcaption {
+    display: flex; justify-content: space-between; gap: 1rem;
+    font: 500 .72rem/1 "IBM Plex Mono", monospace; letter-spacing: .04em;
+    padding: .55rem .9rem; border-bottom: 1px solid var(--line-soft); color: var(--muted); background: var(--surface-2);
+  }
+  figure.code figcaption b { font-weight: 500; color: var(--ink-soft); }
+  figure.code figcaption i { font-style: normal; }
+  figure.code.ours figcaption b::before,
+  figure.code.mastra figcaption b::before { content: ""; display: inline-block; width: .5rem; height: .5rem; border-radius: 50%; margin-right: .5rem; background: var(--ours); }
+  figure.code.mastra figcaption b::before { background: var(--mastra); }
+  .codewrap { position: relative; display: flex; overflow-x: auto; }
+  .codewrap .gutter {
+    flex: 0 0 auto; display: flex; flex-direction: column; user-select: none;
+    padding: .9rem 0 .9rem .9rem; font: 12px/var(--lh) "IBM Plex Mono", monospace; color: var(--muted); text-align: right;
+    min-width: 2.6rem; position: sticky; left: 0; background: var(--code-bg); z-index: 2;
+  }
+  .codewrap .gutter span { opacity: .55; padding-right: .8rem; }
+  .codewrap .gutter span.on { opacity: 1; color: var(--ours); font-weight: 600; border-right: 2px solid var(--ours); }
+  .codewrap pre { margin: 0; padding: .9rem 1rem .9rem .4rem; flex: 1 0 auto; position: relative; z-index: 1; }
+  .codewrap code { display: block; font-size: 13px; line-height: var(--lh); color: var(--code-ink); white-space: pre; tab-size: 2; }
+  .codewrap .stripe { position: absolute; left: 0; right: 0; height: var(--lh); margin-top: .9rem; background: var(--hl-stripe); pointer-events: none; z-index: 0; }
+
+  /* syntax palette (hljs 11 classes) */
+  .hljs-keyword, .hljs-built_in.hljs-keyword, .hljs-literal { color: var(--c-kw); }
+  .hljs-string, .hljs-template-variable, .hljs-subst { color: var(--c-str); }
+  .hljs-number { color: var(--c-num); }
+  .hljs-title, .hljs-title.function_, .hljs-title.class_ { color: var(--c-fn); }
+  .hljs-comment { color: var(--c-cmt); font-style: italic; }
+  .hljs-attr, .hljs-property { color: var(--code-ink); }
+  .hljs-type, .hljs-title.class_.inherited__ { color: var(--c-ty); }
+  .hljs-built_in { color: var(--c-ty); }
+  .hljs-variable.language_ { color: var(--c-kw); }
+
+  /* ---------- prose figures ---------- */
+  .note {
+    border-left: 3px solid var(--ours); background: var(--surface); padding: .8rem 1rem; margin: 0 0 1rem;
+    border-radius: 0 6px 6px 0; font-size: .95rem;
+  }
+  .note.mastra { border-left-color: var(--mastra); }
+  .note.warn { border-left-color: var(--fail); }
+  .note b { font-weight: 600; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem; margin: 0 0 1rem; font-size: .95rem; }
+  .kv dt { color: var(--muted); font: 500 .74rem/1.9 "IBM Plex Mono", monospace; letter-spacing: .04em; }
+  .kv dd { margin: 0; }
+
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  .tablewrap { overflow-x: auto; margin: 0 0 1.25rem; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+  th, td { text-align: left; padding: .55rem .8rem; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  th { font: 500 .72rem/1.4 "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
+  tr:last-child td { border-bottom: 0; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td .mono { font-size: .85em; }
+
+  /* pipeline flow */
+  .flow { display: flex; flex-wrap: wrap; gap: .5rem; align-items: stretch; margin: 1.5rem 0; }
+  .flow .step {
+    flex: 1 1 10rem; min-width: 9rem; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: .8rem .9rem;
+    display: flex; flex-direction: column; gap: .25rem; position: relative;
+  }
+  .flow .step .k { font: 500 .68rem/1 "IBM Plex Mono", monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .flow .step .t { font-weight: 600; font-size: .95rem; }
+  .flow .step .d { font-size: .85rem; color: var(--ink-soft); }
+  .flow .step.ours { border-top: 3px solid var(--ours); }
+  .flow .step.mastra { border-top: 3px solid var(--mastra); }
+  .flow .step.pure { border-top: 3px solid var(--line); }
+  .flow .step .f { font: 400 .72rem/1.4 "IBM Plex Mono", monospace; color: var(--muted); margin-top: .3rem; }
+
+  /* decision tree */
+  .tree { display: grid; gap: .5rem; margin: 0 0 1.25rem; font-size: .92rem; }
+  .tree .q { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: .6rem .9rem; font-weight: 500; }
+  .tree .br { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; padding-left: 1rem; }
+  .tree .leaf { border-radius: 6px; padding: .6rem .9rem; border: 1px solid var(--line); background: var(--surface-2); }
+  .tree .leaf .h { font: 500 .7rem/1 "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .35rem; color: var(--muted); }
+  .tree .leaf.good { border-color: color-mix(in srgb, var(--pass) 45%, var(--line)); }
+  .tree .leaf.bad  { border-color: color-mix(in srgb, var(--fail) 45%, var(--line)); }
+  .tree .leaf.good .h { color: var(--pass); } .tree .leaf.bad .h { color: var(--fail); }
+
+  /* score math strips */
+  .math { font-family: "IBM Plex Mono", monospace; font-size: .86rem; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: .8rem 1rem; margin: 0 0 1rem; overflow-x: auto; white-space: pre; line-height: 1.7; }
+  .math b { color: var(--ours); font-weight: 600; }
+  .math .m { color: var(--mastra); }
+  .verdicts { display: grid; gap: .35rem; margin: 0 0 1rem; font-size: .9rem; }
+  .verdicts .v { display: grid; grid-template-columns: 4.2rem 1fr; gap: .8rem; align-items: baseline; padding: .45rem .7rem; border-radius: 5px; background: var(--surface); border: 1px solid var(--line-soft); }
+  .verdicts .pill { font: 600 .68rem/1 "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; padding: .35em .5em; border-radius: 3px; text-align: center; }
+  .pill.yes { background: var(--pass-bg); color: var(--pass); }
+  .pill.no { background: var(--fail-bg); color: var(--fail); }
+  .pill.unsure { background: var(--ours-bg); color: var(--ours); }
+  .rank { display: flex; gap: .4rem; margin: .4rem 0 .6rem; flex-wrap: wrap; }
+  .rank span { width: 2.2rem; height: 2.2rem; display: grid; place-items: center; border-radius: 5px; font: 600 .8rem "IBM Plex Mono", monospace; border: 1px solid var(--line); }
+  .rank span.y { background: var(--pass-bg); color: var(--pass); border-color: transparent; }
+  .rank span.n { background: var(--surface-2); color: var(--muted); }
+  .rank + .math { margin-top: 0; }
+
+  /* the terminal sample */
+  .term { background: #0f1317; color: #d7dde3; font: 13px/1.6 "IBM Plex Mono", monospace; border-radius: 6px; padding: 1rem 1.2rem; overflow-x: auto; white-space: pre; margin: 0 0 1rem; border: 1px solid #262d35; }
+  .term .p { color: #8fd19e; } .term .f { color: #f0736a; } .term .d { color: #7f8b98; } .term .a { color: #e7b85a; }
+
+  /* end-to-end trace */
+  .trace { display: grid; gap: .6rem; }
+  .trace .row { display: grid; grid-template-columns: 11rem 1fr; gap: 1rem; padding: .8rem 1rem; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+  @media (max-width: 700px) { .trace .row { grid-template-columns: 1fr; } }
+  .trace .who { font: 500 .74rem/1.5 "IBM Plex Mono", monospace; color: var(--muted); }
+  .trace .who b { display: block; color: var(--ink); font-weight: 600; font-family: "IBM Plex Sans", sans-serif; font-size: .92rem; letter-spacing: 0; }
+  .trace .what { font-size: .92rem; }
+  .trace .what pre { margin: .4rem 0 0; font-size: .8rem; line-height: 1.5; background: var(--code-bg); border: 1px solid var(--line-soft); border-radius: 4px; padding: .55rem .7rem; overflow-x: auto; white-space: pre; color: var(--code-ink); }
+
+  .legend { display: flex; gap: 1.2rem; flex-wrap: wrap; font-size: .85rem; color: var(--ink-soft); margin-top: 1.5rem; }
+  .legend span::before { content: ""; display: inline-block; width: .65rem; height: .65rem; border-radius: 2px; margin-right: .45rem; vertical-align: -1px; }
+  .legend .l-ours::before { background: var(--ours); } .legend .l-mastra::before { background: var(--mastra); } .legend .l-pure::before { background: var(--line); }
+
+  .toc { columns: 2; column-gap: 2.5rem; font-size: .92rem; margin-top: 2rem; max-width: 60rem; }
+  @media (max-width: 700px) { .toc { columns: 1; } }
+  .toc ol { margin: 0; padding-left: 1.3rem; } .toc li { break-inside: avoid; margin-bottom: .3rem; } .toc a { text-decoration: none; color: var(--ink-soft); } .toc a:hover { color: var(--ours); }
+  .toc li::marker { color: var(--muted); font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 2px solid var(--ours); outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+<div class="bar" role="navigation" aria-label="Slide position">
+  <span class="name">How Nexus Grades Itself</span>
+  <span class="cur" id="cur"></span>
+  <span class="keys"><kbd>←</kbd> <kbd>→</kbd> slides &nbsp; <kbd>Home</kbd> top</span>
+  <span class="count" id="count"></span>
+  <span class="progress" id="progress"></span>
+</div>
+
+<!-- ============================================================ 0 -->
+<section class="slide" id="s0" data-title="Cover">
+  <header>
+    <div class="eyebrow">Nexus · Slice 2 · the eval harness, function by function</div>
+    <h1>How Nexus <em>grades itself</em></h1>
+    <p class="lede">What happens between typing <code>pnpm eval</code> and seeing <code>PASS ✓</code> or <code>FAIL ✗</code>. Every function on the path, in the order it runs, with the code on the left and the reason it exists on the right. Where the code just moves data around, the explanation is short. Where the code decides something, it is long.</p>
+  </header>
+  <div class="legend">
+    <span class="l-ours">Code Nexus owns (amber)</span>
+    <span class="l-mastra">Inside Mastra's judge (blue)</span>
+    <span class="l-pure">Pure math, no network (grey)</span>
+  </div>
+  <nav class="toc" aria-label="Slides">
+    <ol>
+      <li><a href="#s1">The idea in one breath</a></li>
+      <li><a href="#s2">The map: eleven files, one path</a></li>
+      <li><a href="#s3">Entry: <code>pnpm eval</code> → <code>scripts/eval.ts</code></a></li>
+      <li><a href="#s4"><code>main()</code>: three modes, one exit code</a></li>
+      <li><a href="#s5">The printers (formatting only)</a></li>
+      <li><a href="#s6"><code>runEvalSuite()</code>: the loop</a></li>
+      <li><a href="#s7"><code>mapPool()</code>: three cases at a time</a></li>
+      <li><a href="#s8">The golden set: questions without answers</a></li>
+      <li><a href="#s9"><code>validateGolden()</code>: the integrity guard</a></li>
+      <li><a href="#s10"><code>runCase()</code>: one question through production</a></li>
+      <li><a href="#s11">The shared contract: refusal, prompt, packet</a></li>
+      <li><a href="#s12">Same path as production, proven side by side</a></li>
+      <li><a href="#s13"><code>scoreAnswer()</code>: what we give Mastra, what we get back</a></li>
+      <li><a href="#s14">Inside a Mastra scorer: the four-step pipeline</a></li>
+      <li><a href="#s15">Judge 1 · Faithfulness</a></li>
+      <li><a href="#s16">Judge 2 · Answer Relevancy</a></li>
+      <li><a href="#s17">Judge 3 · Context Precision</a></li>
+      <li><a href="#s18"><code>summary.ts</code>: the types and the bars</a></li>
+      <li><a href="#s19"><code>summarize()</code>: means, refusal accuracy, the gate</a></li>
+      <li><a href="#s20">The tests: what is pinned down</a></li>
+      <li><a href="#s21">Reading the output</a></li>
+      <li><a href="#s22">One case, end to end</a></li>
+      <li><a href="#s23">What this harness does not tell you</a></li>
+    </ol>
+  </nav>
+</section>
+
+<!-- ============================================================ 1 -->
+<section class="slide" id="s1" data-title="The idea in one breath">
+  <header>
+    <div class="eyebrow">First principles</div>
+    <h2>There is no answer key. The judge checks <em>properties</em>, not correctness.</h2>
+    <p class="lede">The first thing to unlearn: the golden set does not store the "right answer" to any question. It stores questions, and for each question one bit: should Nexus answer this, or refuse? Everything else is judged by a second model looking at three properties of what came out.</p>
+  </header>
+  <div class="flow">
+    <div class="step pure"><span class="k">Input</span><span class="t">A golden case</span><span class="d">A question, plus whether the corpus covers it.</span><span class="f">golden.ts</span></div>
+    <div class="step ours"><span class="k">Step 1</span><span class="t">Retrieve</span><span class="d">The real hybrid retriever, top 5, rerank on or off.</span><span class="f">retrieve.ts</span></div>
+    <div class="step ours"><span class="k">Step 2</span><span class="t">Generate</span><span class="d">The real Nexus agent, the real prompt.</span><span class="f">run.ts · answer.ts</span></div>
+    <div class="step ours"><span class="k">Step 3</span><span class="t">Did it refuse?</span><span class="d">Exact match against the one refusal sentence.</span><span class="f">answer.ts</span></div>
+    <div class="step mastra"><span class="k">Step 4</span><span class="t">Judge ×3</span><span class="d">Faithfulness · relevancy · context precision, each 0 to 1.</span><span class="f">score.ts → @mastra/evals</span></div>
+    <div class="step pure"><span class="k">Step 5</span><span class="t">Aggregate + gate</span><span class="d">Means over answerable cases, refusal accuracy over all, compare to bars.</span><span class="f">summary.ts</span></div>
+    <div class="step pure"><span class="k">Output</span><span class="t">Exit 0 or 1</span><span class="d">CI can block a tier on it.</span><span class="f">scripts/eval.ts</span></div>
+  </div>
+  <div class="grid">
+    <div class="explain">
+      <h3>The four things being measured</h3>
+      <ul>
+        <li><b>Faithfulness.</b> Take every claim in the answer. Is each one supported by the evidence the model was shown? Fraction supported. This is the hallucination guard.</li>
+        <li><b>Answer relevancy.</b> Take every statement in the answer. Does each one actually address the question? Fraction relevant, with partial credit for "sort of".</li>
+        <li><b>Context precision.</b> Look at the five evidence chunks in the order they were ranked. Which were useful for producing this answer? Score rewards useful chunks near the top. This is the only axis that grades <i>retrieval</i>, and so the only one the reranker can move.</li>
+        <li><b>Refusal accuracy.</b> Not a Mastra scorer. Our own binary check: did the model refuse exactly on the cases marked out-of-corpus? Must be perfect.</li>
+      </ul>
+    </div>
+    <div class="explain">
+      <h3>Why this design and not a gold answer</h3>
+      <p>Comparing free text to a reference answer is brittle: two correct answers can share no words, and a paraphrase check needs its own judge anyway. Faithfulness sidesteps the whole problem. If every claim is traceable to a transcript chunk, the answer cannot be invented, and the transcript is the ground truth we care about.</p>
+      <p>The cost of that choice is honest and shown on the last slide: a faithful answer to the <i>wrong</i> chunk scores well on faithfulness. Context precision exists to catch that, and the refusal check exists to catch the case where the model should have said nothing at all.</p>
+      <div class="note">The <code>note</code> field on each golden case (for example "Reed calligraphy class → typography in the first Macintosh") is read by humans only. No code touches it.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 2 -->
+<section class="slide" id="s2" data-title="The map">
+  <header>
+    <div class="eyebrow">Orientation</div>
+    <h2>Eleven files, one path</h2>
+    <p class="lede">Six files are the harness. Five are production code the harness deliberately reuses instead of copying, so that the score reflects what users get.</p>
+  </header>
+  <div class="tablewrap"><table>
+    <thead><tr><th>File</th><th>Role</th><th>Talks to the network?</th><th>Owned by</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">scripts/eval.ts</td><td>CLI entry. Parses flags, calls the suite, prints, sets the exit code.</td><td>No (indirectly, via run.ts)</td><td><span class="tag ours">harness</span></td></tr>
+      <tr><td class="mono">scripts/_env.ts</td><td>Loads <code>.env.local</code> then <code>.env</code> so a script outside Next.js sees the keys.</td><td>No</td><td><span class="tag ours">harness</span></td></tr>
+      <tr><td class="mono">src/server/evals/run.ts</td><td>Runs every case through retrieve → generate → refusal check → judge. The orchestrator.</td><td>Yes: DB, embedding, generation, judge</td><td><span class="tag ours">harness</span></td></tr>
+      <tr><td class="mono">src/server/evals/golden.ts</td><td>The eleven questions and the guard that keeps the list sane.</td><td>No</td><td><span class="tag ours">harness</span></td></tr>
+      <tr><td class="mono">src/server/evals/score.ts</td><td>Builds three Mastra scorers and runs them on one answer.</td><td>Yes: judge model via AI Gateway</td><td><span class="tag ours">harness</span> <span class="tag mastra">mastra</span></td></tr>
+      <tr><td class="mono">src/server/evals/summary.ts</td><td>Averages, refusal accuracy, thresholds, pass/fail. Pure functions.</td><td>No</td><td><span class="tag pure">pure</span></td></tr>
+      <tr><td class="mono">src/server/answer.ts</td><td>The refusal sentence, the refusal detector, and the prompt builder. Shared with production.</td><td>No</td><td>production</td></tr>
+      <tr><td class="mono">src/server/retrieval/retrieve.ts</td><td>Hybrid retrieval. Called unchanged, with <code>rerank</code> passed explicitly.</td><td>Yes: Postgres, embeddings, reranker</td><td>production</td></tr>
+      <tr><td class="mono">src/server/mastra/index.ts</td><td>The Nexus agent under test, with its system instructions.</td><td>Yes: generation model</td><td>production</td></tr>
+      <tr><td class="mono">src/server/util/pool.ts</td><td>Bounded concurrency so three cases run at once.</td><td>No</td><td>production</td></tr>
+      <tr><td class="mono">src/env.js</td><td>Declares <code>EVAL_MODEL</code> (default <code>zai/glm-5.3-flash</code>) and friends.</td><td>No</td><td>production</td></tr>
+    </tbody>
+  </table></div>
+  <div class="grid">
+    <div class="explain">
+      <h3>Call graph, top to bottom</h3>
+      <div class="math">scripts/eval.ts  main()
+  └─ run.ts  runEvalSuite({ rerank })
+       ├─ golden.ts  validateGolden(cases)
+       ├─ pool.ts    mapPool(cases, 3, runCase)
+       │    └─ run.ts  runCase(c, rerank)          ← once per case
+       │         ├─ retrieve.ts  retrieve(query, { topK: 5, rerank })
+       │         ├─ answer.ts    buildAnswerMessages(query, evidence)
+       │         ├─ mastra       nexusAgent.generate(messages)
+       │         ├─ answer.ts    isRefusal(answer)
+       │         └─ score.ts     scoreAnswer({ query, answer, contextTexts })
+       │              ├─ <span class="m">createFaithfulnessScorer(...).run()</span>
+       │              ├─ <span class="m">createAnswerRelevancyScorer(...).run()</span>
+       │              └─ <span class="m">createContextPrecisionScorer(...).run()</span>
+       └─ summary.ts  summarize(results)  →  { means, refusalAccuracy, passed, failures }</div>
+    </div>
+    <div class="explain">
+      <h3>Two tests, both offline</h3>
+      <p><code>golden.test.ts</code> and <code>summary.test.ts</code> run under Vitest with no database and no model. That is possible only because the decisions (the guard, the math, the gate) were kept in files that import nothing network-shaped. The network-touching files are thin on purpose.</p>
+      <p>The slides follow the call graph from the top. The Mastra internals (slides 14 to 17) are the one place we go <i>below</i> our own code, because "how does it check the answer" is answered there and nowhere else.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 3 -->
+<section class="slide" id="s3" data-title="Entry point">
+  <header>
+    <div class="eyebrow"><span class="tag ours">ours</span> entry point</div>
+    <h2><code>pnpm eval</code> is three lines of plumbing <span class="weight glue">glue</span></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code ours" data-file="package.json" data-start="12" data-hl="12">
+<div class="codewrap"><pre><code class="language-json">    "eval": "tsx scripts/eval.ts",</code></pre></div></figure>
+      <figure class="code ours" data-file="scripts/_env.ts" data-start="1" data-hl="5,6">
+<div class="codewrap"><pre><code class="language-typescript">// Load env for standalone scripts (Next.js is not in the loop here).
+// .env.local (Vercel/Neon pull) takes precedence over .env.
+import { config } from "dotenv";
+
+config({ path: ".env.local" });
+config({ path: ".env" });</code></pre></div></figure>
+      <figure class="code ours" data-file="scripts/eval.ts" data-start="1" data-hl="1">
+<div class="codewrap"><pre><code class="language-typescript">import "./_env";
+
+import { runEvalSuite } from "~/server/evals/run";
+import { AXES, type EvalSummary } from "~/server/evals/summary";</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <p><code>tsx</code> runs a TypeScript file directly under Node. There is no Next.js server in the loop, so nothing has loaded environment variables yet. That is why the very first import in the script, <span class="ln">L1</span>, is the env loader, and why it must stay first: the later imports pull in <code>src/env.js</code>, which validates <code>DATABASE_URL</code> and friends at import time and would throw on an empty environment.</p>
+      <p>The order of the two <code>config()</code> calls matters in a non-obvious way. <code>dotenv</code> never overwrites a variable that is already set. So loading <code>.env.local</code> first means its values win, and <code>.env</code> only fills the gaps. That is the file Vercel and Neon write when you pull env, so local overrides beat committed defaults.</p>
+      <p>Nothing else here decides anything. Move on.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 4 -->
+<section class="slide" id="s4" data-title="main(): three modes">
+  <header>
+    <div class="eyebrow"><span class="tag ours">ours</span> scripts/eval.ts</div>
+    <h2><code>main()</code>: three modes, and the exit code <em>is</em> the gate <span class="weight core">core</span></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code ours" data-file="scripts/eval.ts" data-start="37" data-hl="40,45,46,50,53,55,57">
+<div class="codewrap"><pre><code class="language-typescript">async function main() {
+  const args = new Set(process.argv.slice(2));
+
+  if (args.has("--compare")) {
+    console.log("Running golden set: rerank off vs on…");
+    // Sequential on purpose: running both suites at once would double the agent + judge calls
+    // in flight against one gateway key, and a failure in either would abort both. Compare mode
+    // is informational, so wall-clock is not the constraint.
+    const off = await runEvalSuite({ rerank: false });
+    const on = await runEvalSuite({ rerank: true });
+    printSummary("rerank OFF", off.summary);
+    printSummary("rerank ON", on.summary);
+    printLift(off.summary, on.summary);
+    process.exit(0);
+  }
+
+  const rerank = args.has("--rerank");
+  console.log(`Running golden set (rerank ${rerank ? "on" : "off"})…`);
+  const { summary } = await runEvalSuite({ rerank });
+  printSummary(rerank ? "rerank ON" : "baseline", summary);
+  process.exit(summary.passed ? 0 : 1);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <div class="kv">
+        <dt>pnpm eval</dt><dd>Baseline. Rerank off. Exits 1 on failure.</dd>
+        <dt>pnpm eval --rerank</dt><dd>Same, with the reranker on. Exits 1 on failure.</dd>
+        <dt>pnpm eval --compare</dt><dd>Runs both, prints the difference. Always exits 0.</dd>
+      </div>
+      <p><span class="ln">L57</span> is the single most important line in the file. Architecture says "do not advance a tier until its evals pass." A rule like that is only real if a machine can enforce it, and the way a machine enforces it is a non-zero exit code that fails a CI job. Everything upstream exists to compute one boolean, <code>summary.passed</code>, and this line turns it into a signal the shell understands.</p>
+      <p><span class="ln">L50</span> is the deliberate exception. Compare mode is a measurement, not a gate. It answers "does the reranker earn its place?" by running the identical suite twice with one variable flipped, <span class="ln">L45</span> and <span class="ln">L46</span>. You read the lift, you decide. It would be wrong for a measurement to fail the build.</p>
+      <p>Why run them one after the other instead of in parallel? Each suite already runs three cases at once, and each case is one generation plus eight judge calls. Two suites at once would double that load on a single gateway key, and one rate-limit error would kill both runs with nothing to show. Compare mode is slow and that is fine.</p>
+      <p>The <code>rerank</code> flag is passed all the way down to <code>retrieve()</code>. It is the only knob. If the two runs differ, the reranker is the only thing that could have caused it, modulo judge noise.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 5 -->
+<section class="slide" id="s5" data-title="The printers">
+  <header>
+    <div class="eyebrow"><span class="tag ours">ours</span> scripts/eval.ts</div>
+    <h2>The printers: formatting, nothing decided here <span class="weight glue">glue</span></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code ours" data-file="scripts/eval.ts" data-start="16" data-hl="23,34">
+<div class="codewrap"><pre><code class="language-typescript">const LABEL_WIDTH = 17;
+const pct = (n: number) =&gt; `${(n * 100).toFixed(1)}%`;
+const row = (label: string, value: string) =&gt;
+  console.log(`  ${label.padEnd(LABEL_WIDTH)} ${value}`);
+
+function printSummary(label: string, s: EvalSummary): void {
+  console.log(`\n${label}`);
+  for (const a of AXES) row(a.label, pct(s.means[a.key]));
+  row("refusal accuracy", pct(s.refusalAccuracy));
+  console.log(`  graded ${s.scored}/${s.total} · ${s.passed ? "PASS ✓" : `FAIL ✗ (${s.failures.join(", ")})`}`);
+}
+
+function printLift(off: EvalSummary, on: EvalSummary): void {
+  const delta = (a: number, b: number) =&gt; {
+    const d = b - a;
+    return `${d &gt;= 0 ? "+" : ""}${(d * 100).toFixed(1)}pt`;
+  };
+  console.log(`\nrerank lift (on − off)`);
+  for (const a of AXES) row(a.label, delta(off.means[a.key], on.means[a.key]));
+}</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <p>Scores live as fractions in 0 to 1 and are shown as percentages. Lift is shown in percentage points, so "+6.2pt" means the mean went from, say, 0.700 to 0.762.</p>
+      <p>The one thing worth noticing is <span class="ln">L23</span> and <span class="ln">L34</span>: neither printer knows the names of the three axes. They loop over <code>AXES</code>, a small table exported from <code>summary.ts</code>. Add a fourth axis in that table and the printers, the means, and the failure check all pick it up. That is the DRY rule from the project instructions applied to something that would otherwise be hard-coded in five places.</p>
+      <p>The "graded 8/11" fragment tells you how many cases went to the judge (answerable ones) out of the total. If that ever reads 11/11 or 0/11, the golden set has lost one of its two halves and the guard on slide 9 should have caught it.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 6 -->
+<section class="slide" id="s6" data-title="runEvalSuite()">
+  <header>
+    <div class="eyebrow"><span class="tag ours">ours</span> src/server/evals/run.ts</div>
+    <h2><code>runEvalSuite()</code>: validate, fan out, summarize <span class="weight core">core</span></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code ours" data-file="src/server/evals/run.ts" data-start="9" data-hl="9,10,60,63,66">
+<div class="codewrap"><pre><code class="language-typescript">const TOP_K = 5;
+const CASE_CONCURRENCY = 3;
+
+const ZERO_SCORES = {
+  faithfulness: 0,
+  answerRelevancy: 0,
+  contextPrecision: 0,
+} as const;</code></pre></div></figure>
+      <figure class="code ours" data-file="src/server/evals/run.ts" data-start="54" data-hl="59,60,63,66">
+<div class="codewrap"><pre><code class="language-typescript">export async function runEvalSuite(opts?: {
+  rerank?: boolean;
+  cases?: GoldenCase[];
+  concurrency?: number;
+}): Promise&lt;{ results: CaseResult[]; summary: EvalSummary }&gt; {
+  const cases = opts?.cases ?? GOLDEN_SET;
+  validateGolden(cases);
+  const rerank = opts?.rerank ?? false;
+
+  const results = await mapPool(cases, opts?.concurrency ?? CASE_CONCURRENCY, (c) =&gt;
+    runCase(c, rerank),
+  );
+  return { results, summary: summarize(results) };
+}</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <p>This is the whole suite in four statements. Pick the cases, check them, run each one with a concurrency cap, hand the list of results to the pure summarizer.</p>
+      <p><span class="ln">L9</span> <code>TOP_K = 5</code> mirrors what <code>ask()</code> passes in production. If production ever changes its top-K and this constant does not, the eval silently grades a different system. That is the kind of drift the next slides are designed to prevent, and this is the one number that is duplicated rather than shared. Worth knowing.</p>
+      <p><span class="ln">L60</span> runs the guard before spending any money. A malformed golden set fails in a millisecond instead of after eleven model calls.</p>
+      <p><span class="ln">L61</span> defaults rerank to <code>false</code> deliberately, not to the environment flag. The eval must be explicit about which variant it is measuring. Production reads <code>RERANK_ENABLED</code>; the eval never does.</p>
+      <p>The <code>cases</code> and <code>concurrency</code> overrides exist so a future test or a smaller smoke run can pass three cases and concurrency one without touching the file. Nothing calls them today.</p>
+      <p><code>ZERO_SCORES</code> is used on the next-but-one slide. It is the score sheet for an answerable question the model wrongly refused: all zeros, so the refusal costs as much as the worst possible answer.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 7 -->
+<section class="slide" id="s7" data-title="mapPool()">
+  <header>
+    <div class="eyebrow">production util, reused</div>
+    <h2><code>mapPool()</code>: three cases in flight, fail fast <span class="weight glue">glue</span></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code" data-file="src/server/util/pool.ts" data-start="17" data-hl="23,31,33,34">
+<div class="codewrap"><pre><code class="language-typescript">export async function mapPool&lt;T, R&gt;(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) =&gt; Promise&lt;R&gt;,
+): Promise&lt;R[]&gt; {
+  const results = new Array&lt;R&gt;(items.length);
+  const workers = Math.max(1, Math.min(Math.floor(limit) || 1, items.length));
+  let cursor = 0;
+  let failed = false;
+  const worker = async () =&gt; {
+    while (!failed) {
+      const i = cursor++;
+      if (i &gt;= items.length) return;
+      try {
+        results[i] = await fn(items[i]!, i);
+      } catch (err) {
+        failed = true;
+        throw err;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: workers }, worker));
+  return results;
+}</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <p>A plain <code>Promise.all(cases.map(runCase))</code> would launch all eleven cases at once. Each case is roughly one embedding call, two SQL queries, one generation, and eight judge calls. Eleven at once is about a hundred requests hitting one gateway key in the same second. The pool caps that at three workers pulling from a shared cursor, <span class="ln">L31</span>.</p>
+      <p>Results land at their original index, <span class="ln">L31</span>, so the output order matches the golden set even though completion order does not. The summarizer does not care about order, but a human reading a future per-case dump will.</p>
+      <p><span class="ln">L33</span> and <span class="ln">L34</span>: the first error flips a flag and every other worker stops picking up new work. Without that, a dead database or an exhausted quota would keep burning model calls for cases whose results are already lost.</p>
+      <p><span class="ln">L23</span> clamps a bad limit (zero, negative, NaN) to at least one worker so the pool can never return an array of holes without calling the function.</p>
+      <p>This file is not eval code. The same helper drives channel ingest. It is here because the harness reuses it rather than writing a second one.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 8 -->
+<section class="slide" id="s8" data-title="The golden set">
+  <header>
+    <div class="eyebrow"><span class="tag ours">ours</span> src/server/evals/golden.ts</div>
+    <h2>The golden set: eleven questions, <em>no answers</em> <span class="weight core">core</span></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code ours" data-file="src/server/evals/golden.ts" data-start="13" data-hl="17">
+<div class="codewrap"><pre><code class="language-typescript">export type GoldenCase = {
+  id: string;
+  query: string;
+  /** true → out-of-corpus; correct behavior is to refuse rather than answer. */
+  expectRefusal?: boolean;
+  note?: string;
+};</code></pre></div></figure>
+      <figure class="code ours" data-file="src/server/evals/golden.ts (excerpt)" data-start="21" data-hl="26,65">
+<div class="codewrap"><pre><code class="language-typescript">export const GOLDEN_SET: GoldenCase[] = [
+  {
+    id: "dots-calligraphy",
+    query: "What did dropping out let Steve Jobs study, and how did it shape the Mac?",
+    note: "Reed calligraphy class → typography in the first Macintosh.",
+  },
+  // … six more answerable cases: dots-connect, loss-fired, loss-next-pixar,
+  //   loss-love-work, death-motivation, death-diagnosis …
+  {
+    id: "closing-stay-hungry",
+    query: "How does the speech end?",
+    note: "Stay hungry, stay foolish.",
+  },
+  {
+    id: "refuse-crypto",
+    query: "What are his thoughts on cryptocurrency and Bitcoin?",
+    expectRefusal: true,
+    note: "Not covered in a 2005 speech.",
+  },
+  {
+    id: "refuse-recipe",
+    query: "What's his recipe for lasagna?",
+    expectRefusal: true,
+    note: "Off-topic; not in the corpus.",
+  },
+  {
+    id: "refuse-android",
+    query: "What does he say about the Android operating system?",
+    expectRefusal: true,
+    note: "Anachronistic / not covered.",
+  },
+];</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <p>Look at the type. There is a <code>query</code>. There is no <code>expectedAnswer</code>. Slide 1 said the judge checks properties, not correctness, and here is the structural proof: the data does not contain what a correctness check would need.</p>
+      <p>The one bit that <i>is</i> labelled by a human is <span class="ln">L17</span>, <code>expectRefusal</code>. It splits the set into two kinds of case that are graded completely differently:</p>
+      <ul>
+        <li><b>Answerable (8 cases).</b> The corpus covers it. The model should answer, and the answer goes to the three judges.</li>
+        <li><b>Refusal (3 cases).</b> The corpus does not cover it. The only correct output is the exact refusal sentence. No judge is involved; the decision itself is the grade.</li>
+      </ul>
+      <p>Why put refusal cases in at all? Because "the refusal is the product" (DESIGN.md §1). A model that confidently answers a question about Bitcoin from a 2005 speech is hallucinating, and no amount of faithfulness scoring on the other eight questions would reveal it. The refusal cases are the only thing that tests the boundary of the corpus.</p>
+      <p>The three refusal probes are chosen to fail differently: crypto is plausible-sounding but anachronistic, lasagna is plainly off-topic, Android is on-brand (tech, Apple's rival) but still not in the speech. A model that refuses all three is refusing for the right reason, not because the question looked weird.</p>
+      <p>The corpus today is one stand-in video. When the full channel is ingested, this list is replaced. Every other file on these slides stays as it is.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 9 -->
+<section class="slide" id="s9" data-title="validateGolden()">
+  <header>
+    <div class="eyebrow"><span class="tag ours">ours</span> src/server/evals/golden.ts</div>
+    <h2><code>validateGolden()</code>: the guard that keeps both halves alive <span class="weight glue">glue</span></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code ours" data-file="src/server/evals/golden.ts" data-start="86" data-hl="96,97,98">
+<div class="codewrap"><pre><code class="language-typescript">export function validateGolden(cases: GoldenCase[]): void {
+  if (cases.length === 0) throw new Error("golden set is empty");
+
+  const ids = new Set&lt;string&gt;();
+  for (const c of cases) {
+    if (!c.query.trim()) throw new Error(`golden case "${c.id}" has an empty query`);
+    if (ids.has(c.id)) throw new Error(`duplicate golden case id: "${c.id}"`);
+    ids.add(c.id);
+  }
+
+  const refusals = cases.filter((c) =&gt; c.expectRefusal).length;
+  if (refusals === 0) throw new Error("golden set has no refusal cases");
+  if (refusals === cases.length) throw new Error("golden set has no answerable cases");
+}</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <p>Four checks. The first three are ordinary hygiene: a non-empty list, non-blank queries, unique ids. The last two, <span class="ln">L97</span> and <span class="ln">L98</span>, are the ones that protect the meaning of the score.</p>
+      <p>Think about what happens without them. Someone edits the golden set for a new channel and forgets to add refusal cases. The suite still runs. Refusal accuracy is computed over zero relevant cases and comes out as whatever the arithmetic gives, the means look fine, the gate says PASS. An entire axis has gone dark and nothing said so. The guard turns that silence into a thrown error before any model is called.</p>
+      <p>Same in the other direction: a set of only refusal cases would have every mean equal zero over an empty list, and the gate would fail for a reason that has nothing to do with the model.</p>
+      <p>The guard is exported and called from two places, the runner and the test file, so the committed set is checked on every <code>pnpm test</code> as well as every <code>pnpm eval</code>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 10 -->
+<section class="slide" id="s10" data-title="runCase()">
+  <header>
+    <div class="eyebrow"><span class="tag ours">ours</span> src/server/evals/run.ts</div>
+    <h2><code>runCase()</code>: one question through the <em>real</em> path, then a grading decision <span class="weight core">core</span></h2>
+    <p class="lede">This is the function to understand completely. Everything before it is delivery; everything after it is arithmetic on what it returns.</p>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code ours" data-file="src/server/evals/run.ts" data-start="28" data-hl="29,31,32,33,35,36,37,38,39,40,46">
+<div class="codewrap"><pre><code class="language-typescript">async function runCase(c: GoldenCase, rerank: boolean): Promise&lt;CaseResult&gt; {
+  const evidence = await retrieve(c.query, { topK: TOP_K, rerank });
+  const answer =
+    evidence.length === 0
+      ? REFUSAL_TEXT
+      : (await nexusAgent.generate(buildAnswerMessages(c.query, evidence))).text;
+
+  const refused = isRefusal(answer);
+  const scores = c.expectRefusal
+    ? undefined
+    : refused
+      ? ZERO_SCORES
+      : await scoreAnswer({
+          query: c.query,
+          answer,
+          contextTexts: evidence.map((e) =&gt; e.text),
+        });
+
+  return { id: c.id, expectRefusal: !!c.expectRefusal, refused, scores };
+}</code></pre></div></figure>
+      <div class="tree" aria-label="Grading decision">
+        <div class="q">Is this case marked <code>expectRefusal</code>?</div>
+        <div class="br">
+          <div class="leaf"><div class="h">yes → scores = undefined</div>Not judged. Only <code>refused</code> matters, and it is compared to <code>expectRefusal</code> later.</div>
+          <div class="leaf"><div class="h">no → did the model refuse?</div>
+            <div class="tree" style="margin:.5rem 0 0">
+              <div class="br" style="padding-left:0">
+                <div class="leaf bad"><div class="h">refused → ZERO_SCORES</div>Wrongful refusal. All three axes score 0, and it stays in the denominator.</div>
+                <div class="leaf good"><div class="h">answered → scoreAnswer()</div>The three Mastra judges run on the real answer.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="explain sticky">
+      <h3>Lines 29 to 33: produce the answer exactly as production would</h3>
+      <p><span class="ln">L29</span> calls the same <code>retrieve()</code> that <code>ask()</code> calls, with the same <code>topK</code> of 5. The only addition is <code>rerank</code>, forwarded from the CLI flag. The result is a list of <code>Evidence</code>: chunk text (already widened with its ±1 neighbours), a score, and where in which video it came from.</p>
+      <p><span class="ln">L31</span> to <span class="ln">L33</span>: if retrieval came back empty, the answer is the refusal sentence without calling the model. That is a copy of the short-circuit in <code>ask()</code>, kept in step on purpose. Otherwise the agent is called with <code>buildAnswerMessages()</code>, the same prompt builder production uses, so the model sees a byte-identical user turn. Production streams; here we <code>generate()</code> and take <code>.text</code>, since there is nothing to stream to.</p>
+      <h3>Line 35: one boolean that decides the rest</h3>
+      <p><code>isRefusal()</code> asks whether the whole answer is the refusal sentence, not whether it starts with it. The next slide shows why that strictness matters.</p>
+      <h3>Lines 36 to 44: grade by the case's kind, not the model's choice</h3>
+      <p>This nested ternary is the heart of the harness. Read it as the decision tree on the left.</p>
+      <p>The subtle branch is the middle one. An answerable case the model refused gets <code>ZERO_SCORES</code>, not <code>undefined</code>. If it were <code>undefined</code>, the summarizer would have to skip it, and then a model that refuses ten questions and answers one well would average 100%. Giving the refusal an explicit zero keeps it in the denominator and makes it cost exactly what a worthless answer costs.</p>
+      <p>The last branch hands the judges three things: the question, the answer, and <code>evidence.map(e =&gt; e.text)</code>, the exact chunk texts the model read, in the exact order it read them. That order is what context precision grades.</p>
+      <p><span class="ln">L46</span> returns a tiny record. Four fields. Everything the summarizer needs and nothing it does not.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 11 -->
+<section class="slide" id="s11" data-title="The shared contract">
+  <header>
+    <div class="eyebrow">production, imported by the harness · src/server/answer.ts</div>
+    <h2>The shared contract: one refusal string, one detector, one prompt <span class="weight core">core</span></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code" data-file="src/server/answer.ts" data-start="10" data-hl="10,20,28,44">
+<div class="codewrap"><pre><code class="language-typescript">export const REFUSAL_TEXT = "He doesn't cover that in his videos.";
+
+/**
+ * Did the model refuse? True iff the *whole* answer is the canonical refusal. …
+ */
+export function isRefusal(text: string): boolean {
+  const normalize = (s: string) =&gt;
+    s
+      .trim()
+      .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+      .trim()
+      .replace(/[.!?]+$/, "")
+      .toLowerCase();
+  return normalize(text) === normalize(REFUSAL_TEXT);
+}
+
+/**
+ * The user turn handed to the generation agent: the numbered evidence packet
+ * followed by the question. …
+ */
+export function buildAnswerMessages(
+  query: string,
+  evidence: Evidence[],
+): { role: "user"; content: string }[] {
+  return [
+    {
+      role: "user",
+      content: `Evidence:\n\n${buildEvidencePacket(evidence)}\n\nQuestion: ${query}`,
+    },
+  ];
+}</code></pre></div></figure>
+      <figure class="code" data-file="src/server/domain/citations.ts" data-start="55">
+<div class="codewrap"><pre><code class="language-typescript">export function buildEvidencePacket(evidence: Evidence[]): string {
+  return evidence
+    .map((e, i) =&gt; {
+      const ts =
+        e.locator?.startSec === undefined
+          ? ""
+          : ` (at ${formatTimestamp(e.locator.startSec)})`;
+      return `[${i + 1}] ${e.source.title}${ts}\n${e.text}`;
+    })
+    .join("\n\n");
+}</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <h3>One string, three readers</h3>
+      <p><span class="ln">L10</span>: the refusal sentence is defined once. The agent's system prompt interpolates it ("reply exactly: …"), <code>ask()</code> emits it when retrieval is empty, and the harness imports it to detect refusals. If someone rewords it in one place, the other two follow. If it were three literals, the eval would start counting real refusals as answers the day the copy changed.</p>
+      <h3>Why equality, not "starts with"</h3>
+      <p><span class="ln">L28</span> compares normalized whole strings. The normalization is just tolerance for cosmetics: surrounding quotes, whitespace, a trailing period or exclamation mark, case. It is <i>not</i> a prefix match, and that is the point. A prefix match would fail in both directions:</p>
+      <ul>
+        <li>It would miss a correct refusal wrapped as <code>"He doesn't cover that in his videos."</code> with quotes, failing the gate on right behaviour. The normalizer handles that.</li>
+        <li>It would accept <i>"He doesn't cover that in his videos, but he does say X [1]"</i> as a refusal. That hedge is exactly what the system prompt forbids. Under equality it counts as an answer, goes to the judges, and faithfulness decides whether "X" was real.</li>
+      </ul>
+      <p>Refusal accuracy is held at 100%, so this detector has to be right every time. That is why it is small and strict.</p>
+      <h3>What the model actually sees</h3>
+      <p><span class="ln">L44</span> builds the single user turn. Here is a real-shaped example for the calligraphy question, trimmed:</p>
+      <div class="math">Evidence:
+
+[1] Steve Jobs' 2005 Stanford Commencement Address (at 3:12)
+…Because I had dropped out and didn't have to take the normal
+classes, I decided to take a calligraphy class to learn how to
+do this…
+
+[2] Steve Jobs' 2005 Stanford Commencement Address (at 4:05)
+…when we were designing the first Macintosh computer, it all
+came back to me. And we designed it all into the Mac…
+
+[3] … [4] … [5] …
+
+Question: What did dropping out let Steve Jobs study, and how did it shape the Mac?</div>
+      <p>The numbering is load-bearing. Marker <code>[2]</code> in the answer means evidence entry 2, which is <code>citations[1]</code> in the UI. The judges see the same texts, minus the numbers and titles, as plain context strings.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 12 -->
+<section class="slide" id="s12" data-title="Same path as production">
+  <header>
+    <div class="eyebrow">why the score means something</div>
+    <h2>Same path as production, <em>proven</em> side by side</h2>
+    <p class="lede">An eval that grades a lookalike of the system tells you about the lookalike. Put <code>ask()</code> next to <code>runCase()</code> and the only differences are stream versus generate, and one extra flag.</p>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code" data-file="src/server/ask.ts · what users hit" data-start="14" data-hl="15,21,22,26,27">
+<div class="codewrap"><pre><code class="language-typescript">export async function* ask(input: Ask): AsyncGenerator&lt;AskChunk&gt; {
+  const evidence = await retrieve(input.query, { topK: 5 });
+
+  // Citations/source cards are known before generation, so they stream first.
+  const { citations, sources } = evidenceToCitations(evidence);
+  yield { citations, sources };
+
+  if (evidence.length === 0) {
+    yield { textDelta: REFUSAL_TEXT };
+    return;
+  }
+
+  const out = await nexusAgent.stream(
+    buildAnswerMessages(input.query, evidence),
+  );
+  // … pump out.textStream as textDelta chunks …
+}</code></pre></div></figure>
+    </div>
+    <div>
+      <figure class="code ours" data-file="src/server/evals/run.ts · what the eval grades" data-start="28" data-hl="29,31,32,33">
+<div class="codewrap"><pre><code class="language-typescript">async function runCase(c: GoldenCase, rerank: boolean): Promise&lt;CaseResult&gt; {
+  const evidence = await retrieve(c.query, { topK: TOP_K, rerank });
+  const answer =
+    evidence.length === 0
+      ? REFUSAL_TEXT
+      : (await nexusAgent.generate(buildAnswerMessages(c.query, evidence))).text;
+  // … grading …
+}</code></pre></div></figure>
+      <div class="explain">
+        <div class="tablewrap"><table>
+          <thead><tr><th>Concern</th><th>ask()</th><th>runCase()</th></tr></thead>
+          <tbody>
+            <tr><td>Retriever</td><td colspan="2">Same <code>retrieve()</code>, same <code>topK: 5</code></td></tr>
+            <tr><td>Rerank</td><td>Reads <code>RERANK_ENABLED</code> env</td><td>Explicit per run, so lift is measurable</td></tr>
+            <tr><td>Empty evidence</td><td colspan="2">Same <code>REFUSAL_TEXT</code>, no model call</td></tr>
+            <tr><td>Prompt</td><td colspan="2">Same <code>buildAnswerMessages()</code>, same agent, same system instructions</td></tr>
+            <tr><td>Model call</td><td><code>stream()</code></td><td><code>generate()</code>, then <code>.text</code></td></tr>
+            <tr><td>Citations</td><td>Emitted to the UI</td><td>Not needed; the <code>[n]</code> markers stay in the text the judges read</td></tr>
+          </tbody>
+        </table></div>
+        <p>Stream versus generate is the same model, same prompt, same sampling. The judges see the finished text either way. So the eval score is a statement about the product, not about a test harness.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 13 -->
+<section class="slide" id="s13" data-title="scoreAnswer()">
+  <header>
+    <div class="eyebrow"><span class="tag ours">ours</span> src/server/evals/score.ts <span class="tag mastra">→ mastra</span></div>
+    <h2><code>scoreAnswer()</code>: what we hand Mastra, what we take back <span class="weight core">core</span></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code ours" data-file="src/server/evals/score.ts" data-start="1" data-hl="27,28,30,31,33,35,36,38,43,44,45">
+<div class="codewrap"><pre><code class="language-typescript">import {
+  createAnswerRelevancyScorer,
+  createContextPrecisionScorer,
+  createFaithfulnessScorer,
+} from "@mastra/evals/scorers/prebuilt";
+import { gateway } from "ai";
+
+import { env } from "~/env";
+import type { AxisScores } from "~/server/evals/summary";
+
+/** … doc comment … */
+export async function scoreAnswer(input: {
+  query: string;
+  answer: string;
+  contextTexts: string[];
+}): Promise&lt;AxisScores&gt; {
+  const model = gateway(env.EVAL_MODEL);
+  const run = { input: input.query, output: input.answer };
+
+  const [faithfulness, answerRelevancy, contextPrecision] = await Promise.all([
+    createFaithfulnessScorer({
+      model,
+      options: { context: input.contextTexts },
+    }).run(run),
+    createAnswerRelevancyScorer({ model }).run(run),
+    createContextPrecisionScorer({
+      model,
+      options: { context: input.contextTexts },
+    }).run(run),
+  ]);
+
+  return {
+    faithfulness: faithfulness.score,
+    answerRelevancy: answerRelevancy.score,
+    contextPrecision: contextPrecision.score,
+  };
+}</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <h3>What goes in</h3>
+      <div class="kv">
+        <dt>model</dt><dd><span class="ln">L27</span> The judge. <code>gateway(env.EVAL_MODEL)</code>, default <code>zai/glm-5.3-flash</code>, routed through the Vercel AI Gateway like every other model call. A separate knob from the generation model so you can make the judge stronger without touching production.</dd>
+        <dt>run.input</dt><dd><span class="ln">L28</span> The user's question, as a bare string.</dd>
+        <dt>run.output</dt><dd><span class="ln">L28</span> The model's answer, as a bare string, citation markers and all.</dd>
+        <dt>options.context</dt><dd><span class="ln">L33</span> <span class="ln">L38</span> The evidence texts in ranked order. Given to faithfulness and context precision, which need to know what the model read. Answer relevancy does not take it: relevance to the question does not depend on evidence.</dd>
+      </div>
+      <p>Mastra's scorers are built to grade agent traces, so they normally receive message arrays. Their input readers accept a plain string too, which is what we pass. That keeps our side to one line, <span class="ln">L28</span>, instead of building fake message objects.</p>
+      <h3>What comes back</h3>
+      <p>Each <code>.run()</code> resolves to a result object with a <code>score</code> in 0 to 1, a <code>reason</code> string written by the judge, and the intermediate step outputs (the extracted claims, the per-claim verdicts). <span class="ln">L43</span> to <span class="ln">L45</span> keep only the score. The reason is generated and then discarded. That is a cost we pay for nothing today, and the last slide comes back to it.</p>
+      <h3>Why construct scorers per call</h3>
+      <p>Context precision and faithfulness carry the context in their <i>options</i>, and the context is different for every question. So the scorer object has to be rebuilt each time. Construction is configuration only, no I/O, so this costs nothing measurable.</p>
+      <p><span class="ln">L30</span> runs the three in parallel. They are independent reads of the same answer.</p>
+      <div class="note mastra">Context precision throws at construction if the context array is empty. <code>runCase()</code> never reaches <code>scoreAnswer()</code> with empty evidence, because empty evidence becomes the refusal, and refusals never get judged. The invariant is upstream, which is why there is no guard here.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 14 -->
+<section class="slide" id="s14" data-title="Inside a Mastra scorer">
+  <header>
+    <div class="eyebrow"><span class="tag mastra">inside mastra</span> @mastra/core/evals · @mastra/evals</div>
+    <h2>Inside a Mastra scorer: four named steps, two or three of them are LLM calls</h2>
+    <p class="lede">A prebuilt scorer is a small pipeline declared with a builder. <code>.run()</code> compiles it into a Mastra workflow and executes the steps in order. Each step that is defined as a prompt goes to a judge agent whose reply is forced into a JSON schema.</p>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code mastra" data-file="@mastra/evals · scorers/prebuilt/index.js (faithfulness, condensed)" data-start="459" data-hl="460,464,469,483,508,513">
+<div class="codewrap"><pre><code class="language-javascript">function createFaithfulnessScorer({ model, options }) {
+	return createScorer({
+		id: "faithfulness-scorer",
+		name: "Faithfulness Scorer",
+		description: "…",
+		judge: {
+			model,
+			instructions: FAITHFULNESS_AGENT_INSTRUCTIONS
+		},
+		type: "agent"
+	}).preprocess({
+		description: "Extract relevant statements from the LLM output",
+		outputSchema: { /* { claims: string[] } */ },
+		createPrompt: ({ run }) =&gt; {
+			return createFaithfulnessExtractPrompt({ output: getAssistantMessageFromRunOutput(run.output) ?? "" });
+		}
+	}).analyze({
+		description: "Score the relevance of the statements to the input",
+		outputSchema: { /* { verdicts: { verdict, reason }[] } */ },
+		createPrompt: ({ results, run }) =&gt; {
+			const context = options?.context ?? getToolInvocationContext(run.output);
+			return createFaithfulnessAnalyzePrompt({
+				claims: results.preprocessStepResult?.claims || [],
+				context
+			});
+		}
+	}).generateScore(({ results }) =&gt; {
+		const totalClaims = results.analyzeStepResult.verdicts.length;
+		const supportedClaims = results.analyzeStepResult.verdicts.filter((v) =&gt; v.verdict === "yes").length;
+		if (totalClaims === 0) return 0;
+		return roundToTwoDecimals(supportedClaims / totalClaims * (options?.scale || 1));
+	}).generateReason({
+		description: "Reason about the results",
+		createPrompt: ({ run, results, score }) =&gt; { /* explain the score in one sentence */ }
+	});
+}</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <h3>The four steps</h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Step</th><th>Kind</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">preprocess</td><td>LLM</td><td>Break the answer into atomic units (claims or statements). Output forced to <code>{ claims: string[] }</code>.</td></tr>
+          <tr><td class="mono">analyze</td><td>LLM</td><td>Give each unit a verdict. Output forced to a verdict array.</td></tr>
+          <tr><td class="mono">generateScore</td><td>plain code</td><td>Turn verdicts into one number. No model, so the arithmetic is deterministic given the verdicts.</td></tr>
+          <tr><td class="mono">generateReason</td><td>LLM</td><td>Write a sentence explaining the score. We never read it.</td></tr>
+        </tbody>
+      </table></div>
+      <p>The judge, <span class="ln m">L464</span>, is an ordinary Mastra <code>Agent</code> built from our model and a fixed system instruction per scorer. When a step has a <code>createPrompt</code>, the runtime sends that prompt to the judge with <code>structuredOutput</code> set to the step's schema, so the reply parses as JSON or the step fails. Nothing here is fuzzy string parsing.</p>
+      <p><span class="ln m">L483</span>: the analyze step receives <code>results.preprocessStepResult</code>, the output of the previous step. That is the whole data flow: each step sees the run plus everything before it.</p>
+      <p><span class="ln m">L508</span>: <code>generateScore</code> is a function, not a prompt. This is the property that makes the scores explainable on the next three slides. Given the verdicts, the number is arithmetic you can check by hand.</p>
+      <h3>How many model calls per answerable case</h3>
+      <div class="kv">
+        <dt>faithfulness</dt><dd>3 (extract, verify, reason)</dd>
+        <dt>answer relevancy</dt><dd>3 (extract, judge, reason)</dd>
+        <dt>context precision</dt><dd>2 (judge, reason; it has no preprocess)</dd>
+        <dt>total judging</dt><dd>8 judge calls, plus the 1 generation that produced the answer</dd>
+      </div>
+      <p>Eight answerable cases means roughly 64 judge calls per run, or about 128 for <code>--compare</code>. That is why the concurrency cap and the sequential compare mode exist.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 15 -->
+<section class="slide" id="s15" data-title="Judge 1 · Faithfulness">
+  <header>
+    <div class="eyebrow"><span class="tag mastra">inside mastra</span> judge 1 of 3 · threshold 0.70</div>
+    <h2>Faithfulness: <em>is every claim in the answer backed by the evidence?</em></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code mastra" data-file="step 1 · preprocess prompt (the judge receives this, abridged)" data-start="322">
+<div class="codewrap"><pre><code class="language-plaintext">Extract all claims from the given output. A claim is any statement that
+asserts information, including both factual and speculative assertions.
+
+Guidelines for claim extraction:
+- Break down compound statements into individual claims
+- Include both definitive and speculative claims (may, might, could)
+- Extract specific details like numbers, dates, and quantities
+- Exclude only questions and commands
+
+Please return only JSON format with "claims" array.
+
+Text:
+{our answer}</code></pre></div></figure>
+      <figure class="code mastra" data-file="step 2 · analyze prompt (abridged)" data-start="358">
+<div class="codewrap"><pre><code class="language-plaintext">Verify each claim against the provided context.
+
+Context:
+{contextTexts joined with newlines}
+
+Claims to verify:
+{claims from step 1}
+
+The verdict must be one of:
+- "yes"    if the claim is supported by the context
+- "no"     if the claim directly contradicts the context
+- "unsure" if the claim is not mentioned in the context or cannot be verified
+
+Rules:
+- Only use information from the provided context
+- Claims with speculative language (may, might, possibly) → "unsure"
+- Never use prior knowledge in your judgment</code></pre></div></figure>
+      <figure class="code mastra" data-file="step 3 · generateScore (plain code)" data-start="508" data-hl="512">
+<div class="codewrap"><pre><code class="language-javascript">.generateScore(({ results }) =&gt; {
+	const totalClaims = results.analyzeStepResult.verdicts.length;
+	const supportedClaims = results.analyzeStepResult.verdicts.filter((v) =&gt; v.verdict === "yes").length;
+	if (totalClaims === 0) return 0;
+	return roundToTwoDecimals(supportedClaims / totalClaims * (options?.scale || 1));
+})</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <h3>What it measures, in one sentence</h3>
+      <p>The fraction of claims in the answer that the judge could point to in the evidence. Everything else, whether contradicted or merely unmentioned, counts as unsupported.</p>
+      <div class="math">faithfulness = <b>yes</b> / (yes + no + unsure)</div>
+      <h3>A worked example</h3>
+      <p>Suppose Nexus answers the calligraphy question with this (illustrative, not a recorded run):</p>
+      <div class="note">"Dropping out let him drop in on a calligraphy class at Reed [1]. He learned about serif and sans-serif typefaces and what makes great typography great [1]. Ten years later that came back when designing the first Macintosh, which became the first computer with beautiful typography [2]. Windows later copied the Mac's approach [2]."</div>
+      <p>Step 1 splits it into claims. Step 2 checks each against the five evidence texts:</p>
+      <div class="verdicts">
+        <div class="v"><span class="pill yes">yes</span><span>Dropping out let him take a calligraphy class at Reed.</span></div>
+        <div class="v"><span class="pill yes">yes</span><span>He learned about serif and sans-serif typefaces.</span></div>
+        <div class="v"><span class="pill yes">yes</span><span>He learned what makes great typography great.</span></div>
+        <div class="v"><span class="pill yes">yes</span><span>Ten years later it came back when designing the first Macintosh.</span></div>
+        <div class="v"><span class="pill yes">yes</span><span>The Mac was the first computer with beautiful typography.</span></div>
+        <div class="v"><span class="pill unsure">unsure</span><span>Windows later copied the Mac's approach. <i>(true in the speech, but say chunk 2 was cut before that line, so the context does not contain it)</i></span></div>
+      </div>
+      <div class="math">faithfulness = 5 / 6 = <b>0.83</b>   → above the 0.70 bar</div>
+      <h3>What to notice</h3>
+      <ul>
+        <li><b>Only "yes" counts.</b> A claim the judge cannot find scores the same as one that is contradicted. This is strict on purpose: anything not in the evidence is, from the user's point of view, invented.</li>
+        <li><b>The evidence is what the model read</b>, not the whole transcript. A true fact from elsewhere in the video that was not retrieved is still penalised. That is correct: the model could only have got it from outside knowledge, which the system prompt forbids.</li>
+        <li><b>Hedging is penalised.</b> "He might have…" is marked unsure by rule. Nexus is told not to hedge, and this scorer agrees.</li>
+        <li><b>Citation markers ride along.</b> The <code>[1]</code> tokens are just characters in the claim text. The judge ignores them; it checks the words.</li>
+        <li><b>Zero claims scores zero.</b> An empty answer is not "trivially faithful", it is a fail. This never fires in practice because refusals are routed around the judge.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 16 -->
+<section class="slide" id="s16" data-title="Judge 2 · Answer Relevancy">
+  <header>
+    <div class="eyebrow"><span class="tag mastra">inside mastra</span> judge 2 of 3 · threshold 0.70</div>
+    <h2>Answer relevancy: <em>does each sentence address the question asked?</em></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code mastra" data-file="step 1 · preprocess prompt (abridged)" data-start="10">
+<div class="codewrap"><pre><code class="language-plaintext">Given the text, break it down into meaningful statements while
+preserving context and relationships. Don't split too aggressively.
+
+Please return only JSON format with "statements" array.
+
+Text:
+{our answer}</code></pre></div></figure>
+      <figure class="code mastra" data-file="step 2 · analyze prompt (abridged)" data-start="41">
+<div class="codewrap"><pre><code class="language-plaintext">Evaluate each statement's relevance to the input question.
+
+- "yes":    Statement explicitly and directly answers the input question
+- "unsure": Statement shows partial relevance (discusses the type of
+            information asked about, or related entities, without a
+            direct answer)
+- "no":     Statement lacks meaningful connection to the question
+
+DO NOT MAKE A JUDGEMENT ON THE CORRECTNESS OF THE STATEMENT,
+JUST THE RELEVANCY.
+
+Input:      {our question}
+Statements: {statements from step 1}</code></pre></div></figure>
+      <figure class="code mastra" data-file="step 3 · generateScore (plain code)" data-start="254" data-hl="258,259,260">
+<div class="codewrap"><pre><code class="language-javascript">.generateScore(({ results }) =&gt; {
+	if (!results.analyzeStepResult || results.analyzeStepResult.results.length === 0) return 0;
+	const numberOfResults = results.analyzeStepResult.results.length;
+	let relevancyCount = 0;
+	for (const { result } of results.analyzeStepResult.results) if (result.trim().toLowerCase() === "yes") relevancyCount++;
+	else if (result.trim().toLowerCase() === "unsure") relevancyCount += options.uncertaintyWeight;
+	return roundToTwoDecimals(relevancyCount / numberOfResults * options.scale);
+})</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <h3>What it measures, in one sentence</h3>
+      <p>How much of the answer is spent answering the question, with partial credit for sentences that are on-topic but not a direct answer.</p>
+      <div class="math">relevancy = (<b>yes</b> + 0.3 × <b>unsure</b>) / statements</div>
+      <p>The 0.3 is Mastra's default <code>uncertaintyWeight</code>. We do not override it.</p>
+      <h3>Same example answer, different question asked of it</h3>
+      <p>The judge now ignores the evidence entirely. It only has the question and the answer:</p>
+      <div class="verdicts">
+        <div class="v"><span class="pill yes">yes</span><span>Dropping out let him take a calligraphy class at Reed. <i>Directly answers "what did dropping out let him study".</i></span></div>
+        <div class="v"><span class="pill yes">yes</span><span>He learned about serif and sans-serif typefaces and what makes typography great. <i>Elaborates the "what he studied" half.</i></span></div>
+        <div class="v"><span class="pill yes">yes</span><span>Ten years later that came back when designing the first Macintosh. <i>Directly answers "how did it shape the Mac".</i></span></div>
+        <div class="v"><span class="pill unsure">unsure</span><span>Windows later copied the Mac's approach. <i>Related to the Mac's typography, but the question did not ask about Windows.</i></span></div>
+      </div>
+      <div class="math">relevancy = (3 + 0.3 × 1) / 4 = 3.3 / 4 = <b>0.83</b></div>
+      <h3>What to notice</h3>
+      <ul>
+        <li><b>Correctness is explicitly out of scope</b>, in capital letters in the prompt. A confidently wrong sentence that addresses the question scores "yes" here. Faithfulness is the axis that would catch it. The two judges are designed not to overlap.</li>
+        <li><b>It punishes padding.</b> Preamble like "Great question! Steve Jobs gave this speech in 2005…" is a "no" or "unsure" statement that dilutes the average. The system prompt says "be concise" and this is the number that checks it.</li>
+        <li><b>Splitting granularity affects the score.</b> Step 1 is an LLM deciding where sentences break. The same answer can split into four statements one run and five the next, which moves the score slightly. This is the main source of run-to-run noise on this axis.</li>
+        <li><b>A refusal would score badly here</b>, which is why refusals are never sent to this judge. "He doesn't cover that" is not relevant to "what does he say about connecting the dots". The harness grades refusals by the decision, not by prose.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 17 -->
+<section class="slide" id="s17" data-title="Judge 3 · Context Precision">
+  <header>
+    <div class="eyebrow"><span class="tag mastra">inside mastra</span> judge 3 of 3 · threshold 0.60 · the retrieval axis</div>
+    <h2>Context precision: <em>were the useful chunks ranked near the top?</em></h2>
+    <p class="lede">The only score that looks at retrieval instead of generation, and the only one where <i>order</i> matters. This is the number the reranker is supposed to move, and the reason <code>--compare</code> exists.</p>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code mastra" data-file="the single analyze prompt (abridged)" data-start="568">
+<div class="codewrap"><pre><code class="language-plaintext">Evaluate the relevance of each context piece for generating the
+expected output given the input query.
+
+Input Query:     {our question}
+Expected Output: {our answer}
+
+Context pieces to evaluate:
+[0] {contextTexts[0]}
+[1] {contextTexts[1]}
+[2] …
+
+Mark as "yes" only if the context piece is clearly useful for
+generating the output. Mark as "no" if it does not contribute.
+
+Format: { "verdicts": [ { "context_index": 0, "verdict": "yes/no", "reason": "…" } ] }</code></pre></div></figure>
+      <figure class="code mastra" data-file="generateScore · average precision (plain code)" data-start="721" data-hl="723,726,727,728,729,732">
+<div class="codewrap"><pre><code class="language-javascript">.generateScore(({ results }) =&gt; {
+	if (!results.analyzeStepResult || results.analyzeStepResult.verdicts.length === 0) return 0;
+	const sortedVerdicts = results.analyzeStepResult.verdicts.sort((a, b) =&gt; a.context_index - b.context_index);
+	let sumPrecision = 0;
+	let relevantCount = 0;
+	for (let i = 0; i &lt; sortedVerdicts.length; i++) if (sortedVerdicts[i]?.verdict?.toLowerCase().trim() === "yes") {
+		relevantCount++;
+		const precisionAtI = relevantCount / (i + 1);
+		sumPrecision += precisionAtI;
+	}
+	if (relevantCount === 0) return 0;
+	return roundToTwoDecimals(sumPrecision / relevantCount * (options.scale || 1));
+})</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <h3>What it measures, in one sentence</h3>
+      <p>Walk down the ranked list. Every time you hit a useful chunk, note what fraction of the list so far was useful. Average those notes. Useful chunks at the top give high fractions; useful chunks buried under junk give low ones.</p>
+      <div class="math">for each useful chunk at position i (1-based):
+    precision@i = (useful chunks in positions 1..i) / i
+
+context precision = mean of precision@i over the useful chunks</div>
+      <p>Mastra's comments call it Mean Average Precision; with one query it is plain Average Precision. Same idea.</p>
+      <h3>Four orderings of the same five chunks</h3>
+      <p>Green is a chunk the judge marked useful. Position is the rank <code>retrieve()</code> gave it.</p>
+      <div class="rank" aria-label="Y Y N N N"><span class="y">1</span><span class="y">2</span><span class="n">3</span><span class="n">4</span><span class="n">5</span></div>
+      <div class="math">(1/1 + 2/2) / 2 = <b>1.00</b>   both useful chunks on top: perfect</div>
+      <div class="rank" aria-label="Y N Y N N"><span class="y">1</span><span class="n">2</span><span class="y">3</span><span class="n">4</span><span class="n">5</span></div>
+      <div class="math">(1/1 + 2/3) / 2 = <b>0.83</b>   one useful chunk slipped to third</div>
+      <div class="rank" aria-label="N Y Y N N"><span class="n">1</span><span class="y">2</span><span class="y">3</span><span class="n">4</span><span class="n">5</span></div>
+      <div class="math">(1/2 + 2/3) / 2 = <b>0.58</b>   junk on top: now below the 0.60 bar</div>
+      <div class="rank" aria-label="N N Y N N"><span class="n">1</span><span class="n">2</span><span class="y">3</span><span class="n">4</span><span class="n">5</span></div>
+      <div class="math">(1/3) / 1 = <b>0.33</b>   one useful chunk, buried</div>
+      <h3>What to notice</h3>
+      <ul>
+        <li><b>Same chunks, different order, different score.</b> That is exactly what a reranker changes: it does not find new chunks, it reorders the fused top 20 before the cut to 5. If rerank on beats rerank off, it shows up here first.</li>
+        <li><b>Chunks below the last useful one do not matter.</b> Y Y N N N and Y Y scored the same. Precision does not punish extra junk at the tail, only junk above a useful chunk.</li>
+        <li><b>"Useful" is defined relative to <i>our</i> answer</b>, not to a gold answer. The prompt literally says "expected output" and we pass the generated answer. So a good chunk the model ignored can be marked "no". This is a real limitation and the honest reading is: the score measures how well retrieval fed the answer that was actually written.</li>
+        <li><b>The texts are the neighbour-expanded ones.</b> Each context piece is the hit plus its ±1 neighbours, the same widened text the model saw. Order is the ranker's order: rerank score when on, RRF score when off.</li>
+        <li><b>No preprocess step.</b> One judge call, then arithmetic. The cheapest of the three.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 18 -->
+<section class="slide" id="s18" data-title="summary.ts: types and bars">
+  <header>
+    <div class="eyebrow"><span class="tag pure">pure</span> src/server/evals/summary.ts</div>
+    <h2>The types and the bars: axes as data, thresholds as policy <span class="weight core">core</span></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code" data-file="src/server/evals/summary.ts" data-start="10" data-hl="21,22,23,24,33,37,44,45,46,47">
+<div class="codewrap"><pre><code class="language-typescript">export type AxisScores = {
+  faithfulness: number;
+  answerRelevancy: number;
+  contextPrecision: number;
+};
+
+/** The axes as data … one table drives the means, the failure check, and the CLI printers */
+export const AXES = [
+  { key: "faithfulness", label: "faithfulness" },
+  { key: "answerRelevancy", label: "answer relevancy" },
+  { key: "contextPrecision", label: "context precision" },
+] as const satisfies readonly { key: keyof AxisScores; label: string }[];
+
+/** One graded case … */
+export type CaseResult = {
+  id: string;
+  expectRefusal: boolean;
+  refused: boolean;
+  scores?: AxisScores;
+};
+
+export type EvalThresholds = AxisScores &amp; { refusalAccuracy: number };
+
+/** Canonical pass bars. Refusal accuracy is 1.0 — the refusal is the product; it must be exact. */
+export const DEFAULT_THRESHOLDS: EvalThresholds = {
+  faithfulness: 0.7,
+  answerRelevancy: 0.7,
+  contextPrecision: 0.6,
+  refusalAccuracy: 1,
+};
+
+export type EvalSummary = {
+  means: AxisScores;
+  refusalAccuracy: number;
+  scored: number; // answerable cases (the denominator of the axis means)
+  total: number;
+  passed: boolean;
+  failures: string[]; // axes (incl. "refusalAccuracy") that fell below threshold
+};</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <p>This file imports nothing. No model, no database, no env. That is a design decision, not an accident: the gate logic is the part most worth unit-testing, and it can only be unit-tested if it can run without a network.</p>
+      <h3>AXES, the one table</h3>
+      <p><span class="ln">L21</span> to <span class="ln">L25</span> list the three axes with a key and a display label. The <code>satisfies</code> clause ties each key to <code>AxisScores</code> at compile time, so a typo in the table is a type error. The means loop, the failure loop, and both CLI printers iterate this table. It is the single place a fourth axis would be added.</p>
+      <h3>CaseResult, the contract with runCase</h3>
+      <p><span class="ln">L33</span> is what <code>runCase()</code> returns and what <code>summarize()</code> consumes. <code>scores</code> being optional, <span class="ln">L37</span>, encodes the rule from slide 10: present for every answerable case, absent for every expected-refusal case.</p>
+      <h3>The bars</h3>
+      <div class="kv">
+        <dt>faithfulness ≥ 0.70</dt><dd>At most three in ten claims unsupported, on average.</dd>
+        <dt>answer relevancy ≥ 0.70</dt><dd>Most of every answer must be on-question.</dd>
+        <dt>context precision ≥ 0.60</dt><dd>Looser: retrieval noise is expected, and a stand-in corpus of one video makes every chunk topically close.</dd>
+        <dt>refusal accuracy = 1.00</dt><dd>Exact. One wrong refusal decision in eleven fails the run.</dd>
+      </div>
+      <p>Why is refusal the only perfect bar? Because it is the only axis where a single miss is a product failure rather than a quality dip. One hallucinated Bitcoin opinion, shipped with a confident citation, costs more trust than a dozen slightly rambling answers. The thresholds are policy, passed as a default parameter, so a future stricter tier can raise them without touching the math.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 19 -->
+<section class="slide" id="s19" data-title="summarize()">
+  <header>
+    <div class="eyebrow"><span class="tag pure">pure</span> src/server/evals/summary.ts</div>
+    <h2><code>summarize()</code>: two averages and a comparison, with one trap avoided <span class="weight core">core</span></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code" data-file="src/server/evals/summary.ts" data-start="59" data-hl="79,81,87,88,92,94,101">
+<div class="codewrap"><pre><code class="language-typescript">function mean(values: number[]): number {
+  return values.length === 0
+    ? 0
+    : values.reduce((a, b) =&gt; a + b, 0) / values.length;
+}
+
+/** … */
+export function summarize(
+  results: CaseResult[],
+  thresholds: EvalThresholds = DEFAULT_THRESHOLDS,
+): EvalSummary {
+  const answerable = results.filter((r) =&gt; !r.expectRefusal);
+  const means = Object.fromEntries(
+    AXES.map((a) =&gt; [a.key, mean(answerable.map((r) =&gt; r.scores?.[a.key] ?? 0))]),
+  ) as AxisScores;
+
+  const refusalAccuracy =
+    results.length === 0
+      ? 0
+      : results.filter((r) =&gt; r.refused === r.expectRefusal).length /
+        results.length;
+
+  const failures: string[] = [];
+  for (const a of AXES) {
+    if (means[a.key] &lt; thresholds[a.key]) failures.push(a.key);
+  }
+  if (refusalAccuracy &lt; thresholds.refusalAccuracy) failures.push("refusalAccuracy");
+
+  return {
+    means,
+    refusalAccuracy,
+    scored: answerable.length,
+    total: results.length,
+    passed: failures.length === 0,
+    failures,
+  };
+}</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <h3>The means: denominator is "should have answered", not "did answer"</h3>
+      <p><span class="ln">L79</span> filters to answerable cases by the <i>label</i>, <code>!expectRefusal</code>. It does not filter by whether the model chose to answer. Combined with the zero scores from <code>runCase()</code>, <span class="ln">L81</span> averages over all eight answerable questions every time.</p>
+      <p>Here is the trap that avoids. Imagine a model that refuses seven of the eight and answers one perfectly. If the average were over answered cases, it would score 1.0 on every axis and pass. Under this code its faithfulness mean is (1.0 + 7 × 0) / 8 = 0.125 and it fails hard. The <code>?? 0</code> on <span class="ln">L81</span> is a belt to that suspenders: even if a future caller forgets the zero scores, a missing score sheet counts as zero, never as absent.</p>
+      <h3>Refusal accuracy: one comparison catches both mistakes</h3>
+      <p><span class="ln">L87</span> to <span class="ln">L88</span>: a decision is correct when <code>refused === expectRefusal</code>. That single equality covers both failure modes, over all eleven cases:</p>
+      <div class="tablewrap"><table>
+        <thead><tr><th>expectRefusal</th><th>refused</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr><td>true</td><td>true</td><td><span class="pill yes">correct</span> refused an out-of-corpus question</td></tr>
+          <tr><td>true</td><td>false</td><td><span class="pill no">wrong</span> answered something the corpus does not cover: hallucination risk</td></tr>
+          <tr><td>false</td><td>true</td><td><span class="pill no">wrong</span> refused something the corpus covers: lost coverage</td></tr>
+          <tr><td>false</td><td>false</td><td><span class="pill yes">correct</span> answered an answerable question</td></tr>
+        </tbody>
+      </table></div>
+      <p>Note the third row is penalised twice: once here (refusal accuracy drops below 1.0) and once in the means (its zero score sheet). That is intentional. A wrongful refusal is both a wrong decision and a missing answer.</p>
+      <h3>The gate</h3>
+      <p><span class="ln">L92</span> and <span class="ln">L94</span> collect every axis under its bar into <code>failures</code>. <span class="ln">L101</span>: passed means the list is empty. The names in the list are what the CLI prints after <code>FAIL ✗</code>, so a red run tells you which axis to look at, not just that something broke.</p>
+      <p>The <code>mean()</code> helper returns 0 for an empty list, so a set with zero answerable cases cannot divide by zero. The guard on slide 9 makes that set impossible anyway; this is defence in depth for a pure function that anyone might call.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 20 -->
+<section class="slide" id="s20" data-title="The tests">
+  <header>
+    <div class="eyebrow"><span class="tag pure">pure</span> golden.test.ts · summary.test.ts</div>
+    <h2>The tests: what is pinned down without a network <span class="weight glue">glue</span></h2>
+  </header>
+  <div class="grid">
+    <div>
+      <figure class="code" data-file="src/server/evals/summary.test.ts (the load-bearing one)" data-start="68" data-hl="72,74,75">
+<div class="codewrap"><pre><code class="language-typescript">it("counts a wrongful refusal on an answerable case as zero, not as un-graded", () =&gt; {
+  // Without this, a model that answers one case well and refuses the rest scores 100%.
+  const s = summarize([
+    answered("a", 0.9, 0.9, 0.9),
+    { id: "b", expectRefusal: false, refused: true }, // answerable, wrongly refused → 0
+  ]);
+  expect(s.scored).toBe(2); // both answerable cases are in the denominator
+  expect(s.means.faithfulness).toBeCloseTo(0.45); // (0.9 + 0) / 2
+  expect(s.passed).toBe(false);
+  expect(s.failures).toContain("faithfulness");
+});</code></pre></div></figure>
+      <figure class="code" data-file="src/server/evals/summary.test.ts" data-start="56" data-hl="63">
+<div class="codewrap"><pre><code class="language-typescript">it("penalizes both refusal failure modes: answering when it should refuse, and vice versa", () =&gt; {
+  const s = summarize([
+    answered("a", 0.9, 0.9, 0.9),
+    refusalCase("should-refuse-but-answered", false),
+    { id: "should-answer-but-refused", expectRefusal: false, refused: true },
+  ]);
+  // 1 of 3 refusal decisions correct → 0.333, below the 1.0 bar.
+  expect(s.refusalAccuracy).toBeCloseTo(1 / 3);
+  expect(s.failures).toContain("refusalAccuracy");
+  expect(s.passed).toBe(false);
+});</code></pre></div></figure>
+    </div>
+    <div class="explain sticky">
+      <p>Both files run under <code>pnpm test</code> in milliseconds. They never call a model, because the code under test never does.</p>
+      <h3>summary.test.ts pins six behaviours</h3>
+      <ul>
+        <li>Means are over answerable cases and a clean run passes with an empty failure list.</li>
+        <li>A low mean fails and <i>names</i> the axis, and only that axis.</li>
+        <li>Both refusal failure modes drop refusal accuracy below 1.0.</li>
+        <li><b>A wrongful refusal counts as zero, not as un-graded.</b> This is the one that protects against the "refuse everything but one" exploit. If someone later "simplifies" the summarizer to skip cases without scores, this test goes red.</li>
+        <li>An all-refusal input does not divide by zero.</li>
+        <li>The default refusal threshold is exactly 1.</li>
+      </ul>
+      <h3>golden.test.ts pins the data</h3>
+      <ul>
+        <li>The committed <code>GOLDEN_SET</code> passes its own guard, so a broken edit fails CI before anyone runs a paid eval.</li>
+        <li>Each of the guard's five error paths (empty set, duplicate id, blank query, no refusals, no answerables) is exercised with a two-line fixture.</li>
+      </ul>
+      <p>What is <i>not</i> tested: <code>runCase()</code> and <code>scoreAnswer()</code>. They are thin wrappers over network calls, and testing them would mean mocking Mastra, the agent, and the database for little insight. The decisions they make (the ternary on slide 10) are exercised indirectly by the summary tests through the <code>CaseResult</code> shapes they produce.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 21 -->
+<section class="slide" id="s21" data-title="Reading the output">
+  <header>
+    <div class="eyebrow">what you see in the terminal</div>
+    <h2>Reading the output</h2>
+  </header>
+  <div class="grid">
+    <div>
+      <div class="term"><span class="d">$</span> pnpm eval --compare
+Running golden set: rerank off vs on…
+
+<span class="a">rerank OFF</span>
+  faithfulness      81.3%
+  answer relevancy  77.9%
+  context precision 58.4%
+  refusal accuracy  100.0%
+  graded 8/11 · <span class="f">FAIL ✗ (contextPrecision)</span>
+
+<span class="a">rerank ON</span>
+  faithfulness      83.8%
+  answer relevancy  78.6%
+  context precision 71.2%
+  refusal accuracy  100.0%
+  graded 8/11 · <span class="p">PASS ✓</span>
+
+<span class="a">rerank lift (on − off)</span>
+  faithfulness      +2.5pt
+  answer relevancy  +0.7pt
+  context precision +12.8pt
+<span class="d">$ echo $?
+0</span></div>
+      <p style="font-size:.85rem;color:var(--muted);margin:0">Example output with made-up numbers, shaped exactly like the real printers. It is not a recorded run.</p>
+    </div>
+    <div class="explain sticky">
+      <h3>How to read a block</h3>
+      <div class="kv">
+        <dt>three percentages</dt><dd>The means from slide 19, over the 8 answerable cases.</dd>
+        <dt>refusal accuracy</dt><dd>Over all 11. Anything under 100.0% is a fail on its own.</dd>
+        <dt>graded 8/11</dt><dd><code>scored</code> over <code>total</code>. Eight went to the judges, three were graded by decision.</dd>
+        <dt>FAIL ✗ (…)</dt><dd>The <code>failures</code> list. It tells you which bar was missed.</dd>
+      </div>
+      <h3>How to read the lift</h3>
+      <p>The lift block is the whole reason the reranker is allowed to exist. In the example the retrieval axis moves by double digits while the generation axes barely move. That is the expected shape: reranking reorders evidence, so context precision should move first and most. Small moves on faithfulness and relevancy are downstream of better evidence and partly judge noise.</p>
+      <p>If the lift were near zero, DESIGN.md §7 says the reranker does not earn its place and should be turned off or removed. The number decides, not the architecture diagram.</p>
+      <h3>Exit codes</h3>
+      <div class="kv">
+        <dt>0</dt><dd><code>pnpm eval</code> passed, or <code>--compare</code> finished (it always exits 0).</dd>
+        <dt>1</dt><dd>The gate failed, <i>or</i> something threw (database down, gateway quota, malformed golden set). Read the output above the exit to tell them apart.</dd>
+      </div>
+      <h3>Noise</h3>
+      <p>Two consecutive runs on identical code will not print identical numbers. Generation is sampled, the judge is sampled, and statement splitting varies. With eight answerable cases, one case moving by 0.2 shifts a mean by 2.5 points. Treat differences under a few points as weather, not signal.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ 22 -->
+<section class="slide" id="s22" data-title="One case, end to end">
+  <header>
+    <div class="eyebrow">recap · the data at every hop</div>
+    <h2>One case, end to end: <em>dots-calligraphy</em></h2>
+    <p class="lede">The same walk as the slides, compressed to the shape of the data at each step. Values are illustrative.</p>
+  </header>
+  <div class="trace">
+    <div class="row"><div class="who">scripts/eval.ts<b>main()</b></div><div class="what">Parses <code>--rerank</code>. Calls <code>runEvalSuite({ rerank: true })</code>.</div></div>
+    <div class="row"><div class="who">run.ts<b>runEvalSuite()</b></div><div class="what">Guard passes (11 cases, 3 refusals). Hands the list to <code>mapPool</code> with three workers. This case is item 0.<pre>{ id: "dots-calligraphy", query: "What did dropping out let Steve Jobs study, and how did it shape the Mac?" }</pre></div></div>
+    <div class="row"><div class="who">retrieve.ts<b>retrieve(query, { topK: 5, rerank: true })</b></div><div class="what">Embeds the query, runs dense and sparse top-20, fuses with RRF, reranks the fused 20, cuts to 5, widens each with ±1 neighbours.<pre>Evidence[5]  →  [ { text: "…calligraphy class…", score: 0.91, locator: { startSec: 192 }, … },
+                  { text: "…first Macintosh…",   score: 0.88, locator: { startSec: 245 }, … },
+                  … 3 more ]</pre></div></div>
+    <div class="row"><div class="who">answer.ts<b>buildAnswerMessages()</b></div><div class="what">One user turn: numbered evidence packet, then the question. Byte-identical to production.</div></div>
+    <div class="row"><div class="who">mastra/index.ts<b>nexusAgent.generate()</b></div><div class="what">Generation model, system instructions with the refusal rule, returns text.<pre>"Dropping out let him drop in on a calligraphy class at Reed [1]. … designing the first Macintosh [2]. …"</pre></div></div>
+    <div class="row"><div class="who">answer.ts<b>isRefusal(answer)</b></div><div class="what">Normalized answer ≠ normalized refusal sentence. <code>refused = false</code>.</div></div>
+    <div class="row"><div class="who">run.ts<b>the grading ternary</b></div><div class="what"><code>expectRefusal</code> is falsy, <code>refused</code> is false, so call <code>scoreAnswer()</code>.</div></div>
+    <div class="row"><div class="who">score.ts<b>scoreAnswer()</b></div><div class="what">Builds three scorers on <code>gateway("zai/glm-5.3-flash")</code>, runs them in parallel with <code>{ input: query, output: answer }</code> and the five evidence texts as context.</div></div>
+    <div class="row"><div class="who">@mastra/evals<b>faithfulness</b></div><div class="what">Extract 6 claims → verify → 5 yes, 1 unsure → <b>0.83</b>. (3 judge calls.)</div></div>
+    <div class="row"><div class="who">@mastra/evals<b>answer relevancy</b></div><div class="what">Split into 4 statements → 3 yes, 1 unsure → (3 + 0.3) / 4 = <b>0.83</b>. (3 judge calls.)</div></div>
+    <div class="row"><div class="who">@mastra/evals<b>context precision</b></div><div class="what">Verdicts by rank: Y Y Y N N → (1/1 + 2/2 + 3/3) / 3 = <b>1.00</b>. (2 judge calls.)</div></div>
+    <div class="row"><div class="who">run.ts<b>runCase() returns</b></div><div class="what"><pre>{ id: "dots-calligraphy", expectRefusal: false, refused: false,
+  scores: { faithfulness: 0.83, answerRelevancy: 0.83, contextPrecision: 1.0 } }</pre></div></div>
+    <div class="row"><div class="who">summary.ts<b>summarize(results)</b></div><div class="what">This record joins seven other answerable records in the means and all ten others in refusal accuracy. Means compared to 0.70 / 0.70 / 0.60, refusal accuracy to 1.0.</div></div>
+    <div class="row"><div class="who">scripts/eval.ts<b>printSummary · process.exit</b></div><div class="what">Prints the block. Exits 0 if <code>failures</code> is empty, else 1.</div></div>
+  </div>
+</section>
+
+<!-- ============================================================ 23 -->
+<section class="slide" id="s23" data-title="What it does not tell you">
+  <header>
+    <div class="eyebrow">honest limits</div>
+    <h2>What this harness does <em>not</em> tell you</h2>
+    <p class="lede">None of these is a bug. Each is a trade the design made, and knowing them is what lets you read a PASS correctly.</p>
+  </header>
+  <div class="grid">
+    <div class="explain">
+      <div class="note warn"><b>Faithful to the wrong chunk still scores faithful.</b> If retrieval returns a chunk about being fired and the model answers the calligraphy question from it, every claim can be "supported" while the answer is off. Context precision is the axis meant to catch that, which is why its threshold matters even though it is the loosest.</div>
+      <div class="note warn"><b>Context precision is graded against our own answer.</b> "Useful for generating the expected output" uses the generated answer as the expected output. A good chunk the model ignored can be marked irrelevant, and a bad answer can make its own evidence look precise. The score is best read as "how well did retrieval feed what was written".</div>
+      <div class="note warn"><b>Judge and generator are the same default model.</b> Both default to <code>zai/glm-5.3-flash</code>. Models tend to rate their own style favourably. <code>EVAL_MODEL</code> is a separate knob precisely so the judge can be made stronger or different; today it is not.</div>
+    </div>
+    <div class="explain">
+      <div class="note warn"><b>Eleven cases is a smoke test, not a benchmark.</b> One case moving 0.2 shifts a mean 2.5 points. The gate is meaningful for catching regressions of the "it broke" kind, less so for ranking two close variants.</div>
+      <div class="note warn"><b>The judge's reasons are paid for and thrown away.</b> Every scorer runs a <code>generateReason</code> call whose sentence we never read. On a failing run those sentences are exactly the debugging aid you would want. Nothing in the code surfaces them yet.</div>
+      <div class="note warn"><b>Completeness is not measured.</b> A short, true, on-topic answer that omits half of what the speech says scores perfectly on all three axes. Mastra ships a context-recall scorer for that; Tier 1 chose not to use it.</div>
+      <p style="margin-top:1.5rem">What the harness <i>does</i> tell you, reliably: the model is not inventing claims beyond its evidence, it is answering the question it was asked, its retrieval puts useful material on top, and it refuses exactly where the corpus ends. For a Tier 1 gate, those are the right four things.</p>
+    </div>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script>
+(function () {
+  // ---- code figures: caption, gutter with true line numbers, highlighted lines
+  document.querySelectorAll('figure.code').forEach(function (f) {
+    var code = f.querySelector('code');
+    var wrap = f.querySelector('.codewrap');
+    if (!code || !wrap) return;
+    var start = parseInt(f.dataset.start || '1', 10);
+    var lines = code.textContent.replace(/\n$/, '').split('\n').length;
+    var hl = {};
+    (f.dataset.hl || '').split(',').forEach(function (r) {
+      if (!r) return;
+      var p = r.split('-').map(Number);
+      for (var i = p[0]; i <= (p[1] || p[0]); i++) hl[i] = true;
+    });
+    if (window.hljs) { try { hljs.highlightElement(code); } catch (e) {} }
+
+    var cap = document.createElement('figcaption');
+    var b = document.createElement('b'); b.textContent = f.dataset.file || '';
+    var i = document.createElement('i'); i.textContent = lines === 1 ? 'L' + start : 'L' + start + '–' + (start + lines - 1);
+    cap.appendChild(b); cap.appendChild(i);
+    f.insertBefore(cap, wrap);
+
+    var g = document.createElement('div'); g.className = 'gutter'; g.setAttribute('aria-hidden', 'true');
+    for (var n = 0; n < lines; n++) {
+      var s = document.createElement('span'); s.textContent = start + n;
+      if (hl[start + n]) s.className = 'on';
+      g.appendChild(s);
+    }
+    wrap.insertBefore(g, wrap.firstChild);
+    Object.keys(hl).forEach(function (ln) {
+      var off = ln - start; if (off < 0 || off >= lines) return;
+      var st = document.createElement('i'); st.className = 'stripe';
+      st.style.top = 'calc(' + off + ' * var(--lh))';
+      wrap.appendChild(st);
+    });
+  });
+
+  // ---- slide position + keyboard nav
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var cur = document.getElementById('cur'), count = document.getElementById('count'), prog = document.getElementById('progress');
+  var active = 0;
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function setActive(i) {
+    active = i;
+    var s = slides[i];
+    cur.textContent = i === 0 ? '' : s.dataset.title || '';
+    count.textContent = pad(i) + ' / ' + pad(slides.length - 1);
+    prog.style.width = ((i / (slides.length - 1)) * 100) + '%';
+  }
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) setActive(slides.indexOf(e.target)); });
+    }, { rootMargin: '-40% 0px -55% 0px', threshold: 0 });
+    slides.forEach(function (s) { io.observe(s); });
+  }
+  setActive(0);
+  function go(i) {
+    i = Math.max(0, Math.min(slides.length - 1, i));
+    slides[i].scrollIntoView({ block: 'start' });
+    setActive(i);
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === 'j') { e.preventDefault(); go(active + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'k') { e.preventDefault(); go(active - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); go(0); }
+    else if (e.key === 'End') { e.preventDefault(); go(slides.length - 1); }
+  });
+})();
+</script>
+</body>
+</html>

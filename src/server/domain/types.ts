@@ -91,6 +91,8 @@ export type Evidence = {
 export type Filter = {
   sourceIds?: string[];
   kind?: SourceKind;
+  /** Scope retrieval to one creator's catalog (the Panel seam). Matches `source.creator_handle`. */
+  creatorHandle?: string;
 };
 
 /** What the user sees for one inline [n] marker. */
@@ -115,6 +117,8 @@ export type Ask = {
   channel: "web" | "discord" | "telegram";
   userId: string;
   threadId: string;
+  /** Scope the answer to one creator's catalog (a Panel column). Absent = the unscoped home chat. */
+  creatorHandle?: string;
 };
 
 /** One streamed chunk out of `ask()` (locked contract). */
