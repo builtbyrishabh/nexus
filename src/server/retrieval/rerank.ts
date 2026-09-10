@@ -20,6 +20,24 @@ export function mapRanking(
 }
 
 /**
+ * The relevance floor. Reranker scores are absolute (query × chunk relevance), unlike RRF's
+ * positional sums, so they can say "nothing here is about that". When even the best candidate
+ * is below the floor the whole ranking is dropped, retrieval returns nothing, and the query path
+ * refuses without a model call — deterministic, where the prompt-level rule was a coin flip on
+ * near-misses ("finance person" vs "CFO"). Calibrated on cohere/rerank-v3.5 against the golden set
+ * (2026-09-07, 31 videos): off-topic refusals top out at 0.13, the CFO near-miss at 0.38, the
+ * weakest answerable question at 0.53. Recalibrate if RERANK_MODEL changes.
+ */
+export const MIN_RERANK_SCORE = 0.45;
+
+export function aboveFloor(
+  ranked: RankedId[],
+  floor = MIN_RERANK_SCORE,
+): RankedId[] {
+  return ranked.some((r) => r.score >= floor) ? ranked : [];
+}
+
+/**
  * Cross-encoder rerank of candidate chunks against the query → the top-N most relevant, best
  * first. Unlike RRF (which only sees rank positions), the reranker reads the query and each
  * chunk's text together, so it can catch relevance that bi-encoder recall missed. This is the
@@ -38,8 +56,10 @@ export async function rerankDocuments(
     documents: docs.map((d) => d.text),
     topN,
   });
-  return mapRanking(
-    docs.map((d) => d.id),
-    ranking,
+  return aboveFloor(
+    mapRanking(
+      docs.map((d) => d.id),
+      ranking,
+    ),
   );
 }

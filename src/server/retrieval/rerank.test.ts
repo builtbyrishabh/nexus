@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mapRanking } from "~/server/retrieval/rerank";
+import { aboveFloor, mapRanking } from "~/server/retrieval/rerank";
 
 describe("mapRanking", () => {
   const ids = ["a", "b", "c", "d"];
@@ -28,5 +28,20 @@ describe("mapRanking", () => {
 
   it("returns nothing for an empty ranking", () => {
     expect(mapRanking(ids, [])).toEqual([]);
+  });
+});
+
+describe("aboveFloor", () => {
+  it("keeps the whole ranking when the best candidate clears the floor, weak tail included", () => {
+    const ranked = [
+      { id: "a", score: 0.53 },
+      { id: "b", score: 0.08 },
+    ];
+    expect(aboveFloor(ranked, 0.45)).toEqual(ranked);
+  });
+
+  it("drops everything when nothing is relevant — a near-miss refuses, not answers", () => {
+    expect(aboveFloor([{ id: "a", score: 0.38 }, { id: "b", score: 0.13 }], 0.45)).toEqual([]);
+    expect(aboveFloor([], 0.45)).toEqual([]);
   });
 });

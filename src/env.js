@@ -48,9 +48,9 @@ export const env = createEnv({
      * behaves exactly as Slice 1 until this flips on. The eval harness overrides it per-run to
      * measure the lift rather than assert it.
      */
-    RERANK_ENABLED: booleanFlag("false"),
+    RERANK_ENABLED: booleanFlag("true"),
     /** LLM judge for the eval scorers (Faithfulness/Answer-Relevancy/Context-Precision). */
-    EVAL_MODEL: z.string().default("zai/glm-5.3-flash"),
+    EVAL_MODEL: z.string().default("openai/gpt-5.6-luna"),
     /**
      * STT fallback for caption-less videos is the one place a re-run can spend real money
      * (audio download + AssemblyAI), so it is off by default and a fresh checkout can never

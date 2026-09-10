@@ -18,9 +18,13 @@ const CONCURRENCY = 5;
 
 /** The document goes first so it forms a shared prefix across every chunk of the same video —
  * the exact shape a provider prompt-cache rewards once we pin a cache-capable context model. */
-function contextPrompt(documentText: string, chunkText: string): string {
+export type ContextDocument = { title: string; text: string };
+
+export function contextPrompt(doc: ContextDocument, chunkText: string): string {
   return `<document>
-${documentText}
+Title: ${doc.title}
+
+${doc.text}
 </document>
 
 Here is a chunk taken from that document:
@@ -28,16 +32,16 @@ Here is a chunk taken from that document:
 ${chunkText}
 </chunk>
 
-Give a short, succinct context (1-2 sentences) that situates this chunk within the overall document, to improve search retrieval of the chunk. Name the specific topic, person, or idea the chunk's pronouns and references point to. Answer ONLY with the context, nothing else.`;
+Give a short, succinct context (1-2 sentences) that situates this chunk within the overall document, to improve search retrieval of the chunk. Name the specific topic, person, or idea the chunk's pronouns and references point to; use the title when it names what the transcript only implies. Answer ONLY with the context, nothing else.`;
 }
 
 async function contextualizeOne(
-  documentText: string,
+  doc: ContextDocument,
   chunkText: string,
 ): Promise<string> {
   const { text } = await generateText({
     model: gateway(env.CONTEXT_MODEL),
-    prompt: contextPrompt(documentText, chunkText),
+    prompt: contextPrompt(doc, chunkText),
   });
   return text.trim();
 }
@@ -47,10 +51,10 @@ async function contextualizeOne(
  * a blurb per input chunk, in order — the pipeline prepends each to its chunk before embedding.
  */
 export function contextualizeChunks(
-  documentText: string,
+  doc: ContextDocument,
   chunkTexts: string[],
 ): Promise<string[]> {
   return mapPool(chunkTexts, CONCURRENCY, (text) =>
-    contextualizeOne(documentText, text),
+    contextualizeOne(doc, text),
   );
 }

@@ -4,10 +4,11 @@ import { runEvalSuite } from "~/server/evals/run";
 import { AXES, type CaseResult, type EvalSummary } from "~/server/evals/summary";
 
 /**
- * Run the golden-set evals. Three modes:
- *   pnpm eval            → baseline retrieval (rerank off), gates via exit code
- *   pnpm eval --rerank   → rerank on, gates via exit code
- *   pnpm eval --compare  → run both and print the rerank lift (informational; always exits 0)
+ * Run the golden-set evals. Modes:
+ *   pnpm eval              → the product default (RERANK_ENABLED), gates via exit code
+ *   pnpm eval --rerank     → rerank on, gates via exit code
+ *   pnpm eval --no-rerank  → rerank off, gates via exit code
+ *   pnpm eval --compare    → run off and on, print the rerank lift (informational; always exits 0)
  * Add --verbose to any mode to print each case: decision, per-axis scores, citations, answer.
  *
  * The gate (nonzero exit on failure) is what makes "don't advance a tier until its evals pass"
@@ -71,11 +72,12 @@ async function main() {
     process.exit(0);
   }
 
-  const rerank = args.has("--rerank");
-  console.log(`Running golden set (rerank ${rerank ? "on" : "off"})…`);
+  const rerank = args.has("--rerank") ? true : args.has("--no-rerank") ? false : undefined;
+  const label = rerank === undefined ? "default" : rerank ? "rerank ON" : "rerank OFF";
+  console.log(`Running golden set (${label})…`);
   const { results, summary } = await runEvalSuite({ rerank });
-  if (verbose) printCases(rerank ? "rerank ON" : "baseline", results);
-  printSummary(rerank ? "rerank ON" : "baseline", summary);
+  if (verbose) printCases(label, results);
+  printSummary(label, summary);
   process.exit(summary.passed ? 0 : 1);
 }
 

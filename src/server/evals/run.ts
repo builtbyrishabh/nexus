@@ -5,6 +5,7 @@ import { GOLDEN_SET, validateGolden, type GoldenCase } from "~/server/evals/gold
 import { scoreAnswer } from "~/server/evals/score";
 import { summarize, type CaseResult, type EvalSummary } from "~/server/evals/summary";
 import { nexusAgent } from "~/server/mastra";
+import { env } from "~/env";
 import { mapPool } from "~/server/util/pool";
 
 const CASE_CONCURRENCY = 3;
@@ -56,7 +57,8 @@ async function runCase(c: GoldenCase, rerank: boolean): Promise<CaseResult> {
 /**
  * Run the whole golden set and summarize. `rerank` selects the retrieval variant under test, so
  * the caller can run the suite twice (off vs on) and read the lift off the two summaries — the
- * measured-not-asserted story for the reranker (docs/DESIGN.md §7).
+ * measured-not-asserted story for the reranker (docs/DESIGN.md §7). Left unset it grades the
+ * product default (`env.RERANK_ENABLED`), passed explicitly so a provider failure fails the run.
  */
 export async function runEvalSuite(opts?: {
   rerank?: boolean;
@@ -65,7 +67,7 @@ export async function runEvalSuite(opts?: {
 }): Promise<{ results: CaseResult[]; summary: EvalSummary }> {
   const cases = opts?.cases ?? GOLDEN_SET;
   validateGolden(cases);
-  const rerank = opts?.rerank ?? false;
+  const rerank = opts?.rerank ?? env.RERANK_ENABLED;
 
   const results = await mapPool(cases, opts?.concurrency ?? CASE_CONCURRENCY, (c) =>
     runCase(c, rerank),

@@ -41,8 +41,9 @@ export function provenanceGate(existing: ExistingSource | undefined): SkipReason
 }
 
 /**
- * The hash gate. The transcript IS the content: same sha256 means chunks, contexts and
- * embeddings would come out identical, so skip before metadata, contextualize, embed or write.
+ * The hash gate. The transcript IS the content: same sha256 (of INDEX_VERSION + transcript) means
+ * chunks, contexts and embeddings would come out identical, so skip before metadata,
+ * contextualize, embed or write.
  */
 export function hashGate(
   existing: ExistingSource | undefined,
@@ -51,8 +52,16 @@ export function hashGate(
   return existing?.contentHash === contentHash ? "unchanged" : undefined;
 }
 
+/**
+ * Bump when the derived rows would change for the same transcript (chunking, the context
+ * prompt, the embedding input). It rides in the content hash, so "run it again" re-indexes.
+ * v2 (2026-09-07): the video title is fed to the context blurb.
+ */
+const INDEX_VERSION = 2;
+
 export function contentHashOf(transcript: Transcript): string {
   return createHash("sha256")
+    .update(`v${INDEX_VERSION}\n`)
     .update(transcript.segments.map((s) => s.text).join("\n"))
     .digest("hex");
 }
@@ -101,7 +110,7 @@ export async function ingestSource(
     built.length === 0
       ? []
       : await contextualizeChunks(
-          transcriptText,
+          { title: meta.title, text: transcriptText },
           built.map((c) => c.text),
         );
   const embeddings =
