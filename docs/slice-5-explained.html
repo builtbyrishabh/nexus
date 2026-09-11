@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Slice 5 — The authed web app</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+<style>
+  :root {
+    --paper:      #EEF0EE;
+    --surface:    #FBFCFB;
+    --surface-2:  #F4F6F3;
+    --ink:        #15181C;
+    --ink-soft:   #3A4148;
+    --muted:      #6B7480;
+    --line:       #D8DCD8;
+    --line-soft:  #E6E9E5;
+    --ingest:     #1D7A63;  /* auth / primary */
+    --ingest-bg:  #DDEFE8;
+    --whisper:    #B5532B;  /* chat SPA */
+    --whisper-bg: #F7E4DB;
+    --fix:        #5B5F9E;  /* memory / store */
+    --fix-bg:     #E6E6F5;
+    --pass:       #1F8A52;
+    --fail:       #C64239;
+    --code-bg:    #F2F4F1;
+    --code-ink:   #23303f;
+
+    --measure: 42rem;
+    --wide: 58rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #101317;
+      --surface:    #171B20;
+      --surface-2:  #1C2127;
+      --ink:        #E7EAEC;
+      --ink-soft:   #C2C8CD;
+      --muted:      #8A939D;
+      --line:       #2A3138;
+      --line-soft:  #232a31;
+      --ingest:     #5CC9A8;
+      --ingest-bg:  #12322A;
+      --whisper:    #F09A72;
+      --whisper-bg: #3A1F14;
+      --fix:        #A3A6E8;
+      --fix-bg:     #23244A;
+      --pass:       #4BC585;
+      --fail:       #F0736A;
+      --code-bg:    #12171d;
+      --code-ink:   #cdd6e0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:      #101317;
+    --surface:    #171B20;
+    --surface-2:  #1C2127;
+    --ink:        #E7EAEC;
+    --ink-soft:   #C2C8CD;
+    --muted:      #8A939D;
+    --line:       #2A3138;
+    --line-soft:  #232a31;
+    --ingest:     #5CC9A8;
+    --ingest-bg:  #12322A;
+    --whisper:    #F09A72;
+    --whisper-bg: #3A1F14;
+    --fix:        #A3A6E8;
+    --fix-bg:     #23244A;
+    --pass:       #4BC585;
+    --fail:       #F0736A;
+    --code-bg:    #12171d;
+    --code-ink:   #cdd6e0;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: var(--wide); margin: 0 auto; padding: 0 1.5rem; }
+  .col  { max-width: var(--measure); margin-left: auto; margin-right: auto; }
+
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  code {
+    font-size: 0.86em;
+    background: var(--code-bg);
+    color: var(--code-ink);
+    padding: 0.1em 0.38em;
+    border-radius: 4px;
+    border: 1px solid var(--line-soft);
+    white-space: nowrap;
+  }
+  a { color: var(--ingest); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--ingest); outline-offset: 2px; }
+
+  /* ---------- header ---------- */
+  header { border-bottom: 1px solid var(--line); background: var(--surface); }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.9rem 0; font-size: 0.8rem;
+  }
+  .brand { font-weight: 600; letter-spacing: 0.02em; }
+  .brand span { color: var(--muted); font-weight: 400; }
+  .toggle {
+    font: inherit; font-size: 0.78rem; cursor: pointer;
+    background: var(--surface-2); color: var(--ink-soft);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 0.28rem 0.8rem;
+  }
+  .toggle:hover { border-color: var(--muted); }
+
+  .hero { padding: 3.4rem 0 2.8rem; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.74rem; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 1rem;
+  }
+  h1 {
+    font-family: "Instrument Serif", Georgia, serif;
+    font-weight: 400; font-size: clamp(2.9rem, 7vw, 4.6rem);
+    line-height: 1.02; letter-spacing: -0.01em; text-wrap: balance;
+    margin: 0 0 1.1rem;
+  }
+  h1 em { font-style: italic; color: var(--ingest); }
+  .lede { font-size: 1.18rem; color: var(--ink-soft); max-width: 40rem; margin: 0; }
+
+  .pillars { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 2.4rem; }
+  @media (max-width: 720px) { .pillars { grid-template-columns: 1fr; } }
+  .pillar {
+    border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem 1.2rem;
+    background: var(--surface);
+  }
+  .pillar .tag {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; letter-spacing: 0.06em;
+    text-transform: uppercase; font-weight: 600; display: inline-block; margin-bottom: 0.5rem;
+    padding: 0.12rem 0.5rem; border-radius: 4px;
+  }
+  .pillar.i .tag { color: var(--ingest); background: var(--ingest-bg); }
+  .pillar.w .tag { color: var(--whisper); background: var(--whisper-bg); }
+  .pillar.f .tag { color: var(--fix); background: var(--fix-bg); }
+  .pillar h3 { margin: 0 0 0.3rem; font-size: 1.08rem; }
+  .pillar p { margin: 0; font-size: 0.95rem; color: var(--ink-soft); }
+  .also {
+    margin-top: 1rem; font-size: 0.88rem; color: var(--muted);
+    border: 1px dashed var(--line); border-radius: 10px; padding: 0.7rem 1.1rem;
+  }
+  .also b { color: var(--fix); font-weight: 600; }
+
+  /* ---------- sections ---------- */
+  section { padding: 3rem 0; border-top: 1px solid var(--line-soft); }
+  .kicker {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.75rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 0.7rem;
+    display: flex; align-items: center; gap: 0.6rem;
+  }
+  .kicker .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .kicker.i .dot { background: var(--ingest); }
+  .kicker.w .dot { background: var(--whisper); }
+  .kicker.f .dot { background: var(--fix); }
+  .kicker.n .dot { background: var(--muted); }
+  h2 {
+    font-family: "Instrument Serif", Georgia, serif; font-weight: 400;
+    font-size: clamp(2rem, 4.5vw, 2.9rem); line-height: 1.08; letter-spacing: -0.01em;
+    margin: 0 0 1.2rem; text-wrap: balance;
+  }
+  h4 { font-size: 1.06rem; margin: 2rem 0 0.5rem; letter-spacing: -0.005em; }
+  p { margin: 0 0 1.1rem; }
+  .col > p, .col > ul, .col > ol { color: var(--ink-soft); }
+  strong { color: var(--ink); font-weight: 600; }
+  ul, ol { padding-left: 1.2rem; margin: 0 0 1.1rem; }
+  li { margin-bottom: 0.4rem; }
+
+  .note {
+    font-size: 0.9rem; color: var(--muted); border-left: 2px solid var(--line);
+    padding-left: 0.9rem; margin: 1.4rem 0;
+  }
+  .note.w { border-left-color: var(--whisper); }
+  .note.i { border-left-color: var(--ingest); }
+  .note.f { border-left-color: var(--fix); }
+
+  /* ---------- figure (svg) ---------- */
+  figure.figure {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 1.4rem 1.2rem 1.1rem; margin: 1.8rem auto; overflow-x: auto;
+  }
+  figure.figure svg { display: block; max-width: 100%; height: auto; margin: 0 auto; color: var(--ink); }
+  figcaption {
+    font-size: 0.82rem; color: var(--muted); text-align: center; margin-top: 1rem;
+    font-family: "IBM Plex Mono", monospace; letter-spacing: 0.02em;
+  }
+  svg .box   { fill: var(--surface-2); stroke: var(--line); stroke-width: 1.2; }
+  svg .box.i { fill: var(--ingest-bg); stroke: var(--ingest); }
+  svg .box.w { fill: var(--whisper-bg); stroke: var(--whisper); }
+  svg .box.f { fill: var(--fix-bg); stroke: var(--fix); }
+  svg .box.dash { fill: var(--surface); stroke: var(--ink-soft); stroke-dasharray: 4 3; }
+  svg .t  { font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 12.5px; font-weight: 600; fill: var(--ink); }
+  svg .s  { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; fill: var(--muted); }
+  svg .s.i { fill: var(--ingest); } svg .s.w { fill: var(--whisper); } svg .s.f { fill: var(--fix); }
+  svg .lbl { font-family: "IBM Plex Mono", monospace; font-size: 10.5px; fill: var(--ink-soft); }
+  svg .edge { stroke: currentColor; stroke-width: 1.3; fill: none; }
+  svg .edge.faint { stroke: var(--muted); }
+  svg .edge.f { stroke: var(--fix); }
+  svg .edge.dash { stroke: var(--muted); stroke-dasharray: 5 4; }
+
+  /* ---------- code ---------- */
+  pre.code {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 12px;
+    padding: 1rem 1.2rem; margin: 1.2rem 0; overflow-x: auto;
+    font-family: "IBM Plex Mono", monospace; font-size: 0.82rem; line-height: 1.55; color: var(--code-ink);
+  }
+  pre.code code { background: none; border: 0; padding: 0; white-space: pre; font-size: inherit; color: inherit; }
+  pre.code .cm { color: var(--muted); }
+  pre.code .add { color: var(--pass); }
+  pre.code .del { color: var(--fail); text-decoration: line-through; text-decoration-thickness: 1px; }
+  pre.code .hl { color: var(--ingest); font-weight: 600; }
+  .beforeafter { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1.4rem auto; }
+  @media (max-width: 720px) { .beforeafter { grid-template-columns: 1fr; } }
+  .beforeafter .ba-h {
+    font-family: "IBM Plex Mono", monospace; font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 0.4rem;
+  }
+  .beforeafter pre.code { margin: 0; height: 100%; }
+
+  /* ---------- table ---------- */
+  .tablewrap { overflow-x: auto; margin: 1.6rem auto; border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.92rem; min-width: 560px; }
+  thead th {
+    text-align: left; font-family: "IBM Plex Mono", monospace; font-size: 0.72rem;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600;
+    padding: 0.8rem 1rem; background: var(--surface-2); border-bottom: 1px solid var(--line);
+  }
+  tbody td { padding: 0.85rem 1rem; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: 0; }
+  .dname { font-weight: 600; color: var(--ink); }
+  .dwhy { color: var(--ink-soft); font-size: 0.9rem; }
+  td .pill {
+    display: inline-block; font-family: "IBM Plex Mono", monospace; font-size: 0.66rem; letter-spacing: 0.08em;
+    text-transform: uppercase; font-weight: 600; padding: 0.08rem 0.45rem; border-radius: 4px; margin-bottom: 0.3rem;
+  }
+  .pill.i { color: var(--ingest); background: var(--ingest-bg); }
+  .pill.w { color: var(--whisper); background: var(--whisper-bg); }
+  .pill.f { color: var(--fix); background: var(--fix-bg); }
+
+  /* ---------- outcome chips ---------- */
+  .chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; margin: 1.4rem 0; }
+  @media (max-width: 620px) { .chips { grid-template-columns: 1fr; } }
+  .chip { border: 1px solid var(--line); border-radius: 10px; padding: 0.8rem 1rem; background: var(--surface); }
+  .chip .k { font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; font-weight: 600; display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.3rem; }
+  .chip .k .pip { width: 8px; height: 8px; border-radius: 50%; }
+  .chip.ok .k { color: var(--pass); } .chip.ok .pip { background: var(--pass); }
+  .chip.sk .k { color: var(--muted); } .chip.sk .pip { background: var(--muted); }
+  .chip.bad .k { color: var(--fail); } .chip.bad .pip { background: var(--fail); }
+  .chip p { margin: 0; font-size: 0.85rem; color: var(--ink-soft); }
+
+  /* ---------- reading order ---------- */
+  .flow { margin: 1.4rem 0; padding-left: 0; list-style: none; counter-reset: step; }
+  .flow li {
+    position: relative; padding-left: 2.8rem; margin-bottom: 1.15rem; counter-increment: step;
+    color: var(--ink-soft); font-size: 0.96rem;
+  }
+  .flow li::before {
+    content: counter(step); position: absolute; left: 0; top: 0.05rem;
+    width: 1.9rem; height: 1.9rem; border-radius: 50%;
+    background: var(--ingest-bg); color: var(--ingest); font-family: "IBM Plex Mono", monospace;
+    font-size: 0.82rem; font-weight: 600; display: flex; align-items: center; justify-content: center;
+  }
+  .flow li.w::before { background: var(--whisper-bg); color: var(--whisper); }
+  .flow li.f::before { background: var(--fix-bg); color: var(--fix); }
+  .flow .f-name { font-family: "IBM Plex Mono", monospace; font-size: 0.84rem; font-weight: 600; color: var(--ink); }
+  .flow .f-star { color: var(--fix); font-weight: 600; margin-left: 0.4rem; font-size: 0.8rem; }
+  .flow .f-min { font-family: "IBM Plex Mono", monospace; font-size: 0.72rem; color: var(--muted); margin-left: 0.5rem; }
+  .flow .f-why { display: block; margin-top: 0.15rem; }
+
+  footer { border-top: 1px solid var(--line); padding: 2.6rem 0 3.4rem; color: var(--muted); font-size: 0.88rem; }
+  footer .oneline { font-family: "Instrument Serif", Georgia, serif; font-size: 1.5rem; color: var(--ink); margin: 0 0 1rem; font-style: italic; }
+
+  @media (prefers-reduced-motion: no-preference) { .toggle { transition: border-color 0.15s ease; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">Nexus <span>· PR reading guide</span></div>
+      <button class="toggle" id="themeToggle" type="button" aria-label="Toggle light and dark theme">◑ theme</button>
+    </div>
+  </div>
+  <div class="wrap hero">
+    <div class="col">
+      <p class="eyebrow">Slice 5 · PR #19 · the authed web app</p>
+      <h1>The real<br /><em>product surface</em></h1>
+      <p class="lede">Every slice before this one answered a question over an API and a throwaway starter page. Slice&nbsp;5 turns that into a product you sign into: a <strong>Clerk-authed web app</strong> with a sidebar of past chats, instant chat-switching, and history that survives a reload — while the grounded, cited, <strong>single-turn</strong> RAG underneath stays exactly as it was.</p>
+    </div>
+    <div class="col pillars">
+      <div class="pillar i">
+        <span class="tag">Auth</span>
+        <h3>Clerk gates everything</h3>
+        <p>One middleware, one <code>ClerkProvider</code>, one <code>protectedProcedure</code>. <code>userId</code> flows from the request into tRPC and the chat route — and becomes the key every thread is scoped by.</p>
+      </div>
+      <div class="pillar w">
+        <span class="tag">Chat SPA</span>
+        <h3>Switch threads, no remount</h3>
+        <p>One mounted page; the active thread lives in <code>?id=</code>. Starting or switching a chat is a <strong>shallow param flip</strong> — no route change, no server round-trip. The transport uploads only the newest message.</p>
+      </div>
+      <div class="pillar f">
+        <span class="tag">Memory as store</span>
+        <h3>History that persists</h3>
+        <p>Mastra Memory on Postgres holds the threads and messages — <strong>as the store only</strong>. It is deliberately <em>not</em> attached to the agent, so prior turns never leak into retrieval or generation.</p>
+      </div>
+    </div>
+    <div class="col also">
+      <b>Also riding in this diff:</b> the <b>Slice&nbsp;4 Panel</b> backend seam (creator scope on <code>source</code>, per-column fan-out, neutral per-creator refusals) lands as this PR's first commit — the Panel <em>UI</em> ships here too, under the new app shell. Covered near the end.
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ WHAT CHANGED ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker n"><span class="dot"></span>Where we started</p>
+      <h2>From a starter chat to a product</h2>
+      <p>Before this PR, the web surface was the T3 starter's single page hitting <code>/api/chat</code>. It could stream one grounded answer, but there was no sign-in, no notion of a user, and nothing was saved: reload the tab and the conversation was gone. The RAG engine (retrieve → cite → refuse-or-answer) was already solid from Slices&nbsp;0–3; what was missing was a <strong>place to live</strong>.</p>
+      <p>Slice&nbsp;5 builds that place, modeled on the LessonPlay chat pattern, in four moves — and takes deliberate care that none of them touch the meaning of an answer:</p>
+      <ul>
+        <li><strong>Auth (Clerk).</strong> Everything except the landing redirect and the sign-in / sign-up pages is behind auth. The signed-in <code>userId</code> becomes the scope key for all data.</li>
+        <li><strong>The chat SPA.</strong> A sidebar of past chats plus one always-mounted conversation page. Switching chats is instant because it never leaves the page.</li>
+        <li><strong>Persistence.</strong> Mastra Memory on the same Postgres stores threads and messages — including each answer's citations, so <code>[n]</code> deep-links survive a reload.</li>
+        <li><strong>The Panel, under the shell.</strong> The Slice&nbsp;4 fan-out (one question → each creator's own answer) becomes a real page in the app.</li>
+      </ul>
+      <p class="note f">The one line to hold onto: <strong>Mastra Memory is used as a store, not as agent memory.</strong> Generation still sees only the current question and its retrieved evidence. History is for the sidebar — never an input to the model. Every design choice below serves that boundary.</p>
+    </div>
+  </section>
+
+  <!-- ============ THE MAP ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker w"><span class="dot"></span>The map</p>
+      <h2>One turn, end to end</h2>
+      <p>Hold this picture while reading the code. A message from the client carries only the <em>newest</em> question plus a <code>threadId</code>. It hits the one streaming route, which runs the same <code>ask()</code> every surface uses, streams citations then text back, and — only for the main chat — persists the turn afterward. History for the sidebar is read separately, over tRPC.</p>
+    </div>
+
+    <figure class="figure">
+      <svg viewBox="0 0 900 470" role="img" aria-label="Slice 5 request flow: the chat page sends the newest message plus threadId to the chat route; the route authenticates with Clerk, runs ask() which retrieves evidence and streams citations then the grounded answer, then persists the turn to Mastra Memory. The sidebar reads the thread list and history separately over tRPC, both scoped by userId.">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+          </marker>
+          <marker id="ah-fix" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--fix)" />
+          </marker>
+          <marker id="ah-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)" />
+          </marker>
+        </defs>
+
+        <!-- client column -->
+        <rect class="box w" x="20" y="60" width="180" height="66" rx="9" />
+        <text class="t" x="110" y="86" text-anchor="middle">chats/page.tsx</text>
+        <text class="s w" x="110" y="104" text-anchor="middle">?id= · shallow flip</text>
+
+        <rect class="box w" x="20" y="150" width="180" height="66" rx="9" />
+        <text class="t" x="110" y="176" text-anchor="middle">chat-conversation</text>
+        <text class="s w" x="110" y="194" text-anchor="middle">useChat transport</text>
+
+        <rect class="box i" x="20" y="330" width="180" height="66" rx="9" />
+        <text class="t" x="110" y="356" text-anchor="middle">sidebar</text>
+        <text class="s i" x="110" y="374" text-anchor="middle">chats.list / .messages</text>
+
+        <!-- route -->
+        <rect class="box i" x="330" y="120" width="200" height="86" rx="9" />
+        <text class="t" x="430" y="150" text-anchor="middle">/api/chat</text>
+        <text class="s i" x="430" y="168" text-anchor="middle">auth() → userId</text>
+        <text class="s" x="430" y="184" text-anchor="middle">newest msg + threadId</text>
+
+        <!-- ask -->
+        <rect class="box" x="330" y="240" width="200" height="70" rx="9" />
+        <text class="t" x="430" y="268" text-anchor="middle">ask()</text>
+        <text class="s" x="430" y="286" text-anchor="middle">retrieve → cite → answer</text>
+
+        <!-- persist -->
+        <rect class="box f" x="640" y="240" width="220" height="70" rx="9" />
+        <text class="t" x="750" y="268" text-anchor="middle">persistTurn()</text>
+        <text class="s f" x="750" y="286" text-anchor="middle">plain Q + answer + cites</text>
+
+        <!-- store -->
+        <rect class="box f" x="640" y="350" width="220" height="66" rx="9" />
+        <text class="t" x="750" y="376" text-anchor="middle">Mastra Memory</text>
+        <text class="s f" x="750" y="394" text-anchor="middle">Postgres · mastra_* tables</text>
+
+        <!-- threads module -->
+        <rect class="box dash" x="640" y="120" width="220" height="66" rx="9" />
+        <text class="t" x="750" y="146" text-anchor="middle">server/chat/threads.ts</text>
+        <text class="s" x="750" y="164" text-anchor="middle">the ONE persistence module</text>
+
+        <!-- edges -->
+        <path class="edge" d="M200,183 L326,168" marker-end="url(#ah)" />
+        <text class="lbl" x="245" y="168" text-anchor="middle">POST</text>
+
+        <path class="edge" d="M430,206 L430,236" marker-end="url(#ah)" />
+        <path class="edge" d="M330,275 L330,275" />
+        <path class="edge faint" d="M330,275 C260,275 250,240 205,200" marker-end="url(#ah-muted)" />
+        <text class="lbl" x="250" y="235" text-anchor="middle">stream</text>
+
+        <path class="edge f" d="M530,275 L636,275" marker-end="url(#ah-fix)" />
+        <text class="lbl" x="583" y="264" text-anchor="middle">after stream</text>
+        <path class="edge f" d="M750,310 L750,346" marker-end="url(#ah-fix)" />
+
+        <!-- threads module used by both -->
+        <path class="edge dash" d="M640,180 L534,255" marker-end="url(#ah-muted)" />
+        <path class="edge dash" d="M700,186 L730,236" marker-end="url(#ah-muted)" />
+
+        <!-- sidebar reads -->
+        <path class="edge faint" d="M200,360 C420,360 560,400 636,388" marker-end="url(#ah-muted)" />
+        <text class="lbl" x="430" y="352" text-anchor="middle">tRPC · scoped by userId</text>
+      </svg>
+      <figcaption>The streaming path (route → ask → stream) and the persist path (persistTurn → store) share one module. The sidebar reads the same store over tRPC. Everything is keyed by <code>userId</code>.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ============ READING ORDER ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker i"><span class="dot"></span>What to read, in order</p>
+      <h2>The path through the diff before you merge</h2>
+      <p>The PR touches 37 files, but only a dozen carry the design. Read them in this order — each one sets up the next. The <span style="color:var(--fix);font-weight:600">★</span> marks the single most load-bearing file. Rough minute estimates in mono.</p>
+
+      <ol class="flow">
+        <li class="i">
+          <span class="f-name">src/middleware.ts</span><span class="f-min">~2 min</span>
+          <span class="f-why">The auth boundary. Everything except <code>/</code>, <code>/sign-in</code>, <code>/sign-up</code> is behind Clerk. The <code>matcher</code> also always runs for <code>/api</code> and <code>/trpc</code> so <code>auth()</code> is available server-side. Start here — it defines who can reach anything.</span>
+        </li>
+        <li class="i">
+          <span class="f-name">src/server/api/trpc.ts</span><span class="f-min">~3 min</span>
+          <span class="f-why">How <code>userId</code> enters the backend. <code>createTRPCContext</code> reads it from <code>auth()</code>; the new <code>protectedProcedure</code> guarantees it's non-null. This is the value used as Mastra's <code>resourceId</code> everywhere, so read the two together.</span>
+        </li>
+        <li class="f">
+          <span class="f-name">src/server/mastra/index.ts</span><span class="f-min">~4 min</span>
+          <span class="f-why">The load-bearing decision, stated in comments: <code>PostgresStore</code> is registered on the <code>mastra</code> instance, but <strong>deliberately not wired into <code>nexusAgent</code> as <code>memory</code></strong>. Memory is the store; the query path stays single-turn. If you read one comment block in the PR, read this one.</span>
+        </li>
+        <li class="f">
+          <span class="f-name">src/server/chat/threads.ts</span><span class="f-star">★ most important</span><span class="f-min">~8 min</span>
+          <span class="f-why">The <em>one</em> place thread operations live: list, load-history, rename, delete, and <code>persistTurn</code>. Both the streaming route and the tRPC router are thin callers of this (DRY). Note <code>assertOwnership</code> (cross-user probes throw <code>NOT_FOUND</code>), the deterministic <code>titleFromQuestion</code>, and that it persists the <strong>plain question</strong> + answer + citations — never the evidence-stuffed prompt.</span>
+        </li>
+        <li class="i">
+          <span class="f-name">src/app/api/chat/route.ts</span><span class="f-min">~6 min</span>
+          <span class="f-why">The single streaming path shared by two callers: the main chat (<code>{ message, threadId }</code>, persisted) and the Panel (<code>{ messages, creatorHandle }</code>, ephemeral). Both reduce to <code>ask()</code>. Persistence is <strong>best-effort after the stream</strong> — a store hiccup can never fail the answer.</span>
+        </li>
+        <li class="f">
+          <span class="f-name">src/server/api/routers/chats.ts</span><span class="f-min">~2 min</span>
+          <span class="f-why">The sidebar's CRUD (<code>list</code> / <code>messages</code> / <code>rename</code> / <code>delete</code>). Every procedure is a one-line wrapper over <code>threads.ts</code>, scoped by <code>ctx.userId</code>. Confirms the "one persistence contract" claim.</span>
+        </li>
+        <li class="w">
+          <span class="f-name">src/app/(app)/chats/page.tsx</span><span class="f-min">~7 min</span>
+          <span class="f-why">The SPA harness. The active thread is <code>?id=</code> via <code>nuqs</code>; starting/switching is a shallow flip (no remount). A thread id is minted up front (<code>crypto.randomUUID</code>) so a brand-new chat has a stable id before its first turn persists; a carried <code>?q=</code> seeds the composer once.</span>
+        </li>
+        <li class="w">
+          <span class="f-name">src/app/_components/chat-conversation.tsx</span><span class="f-min">~5 min</span>
+          <span class="f-why">The live conversation. <code>useChat</code>'s <code>prepareSendMessagesRequest</code> sends only the newest message + <code>threadId</code> — history lives server-side. Keyed by <code>threadId</code>, so switching mounts a fresh stream while the page stays put. Reuses the shared <code>AnswerText</code> renderer.</span>
+        </li>
+        <li class="w">
+          <span class="f-name">src/app/(app)/panel/page.tsx</span><span class="f-min">~4 min</span>
+          <span class="f-why">The Panel UI: one question box fans out to one <code>useChat</code> per creator column, each posting to the same route with its own <code>creatorHandle</code>. Ephemeral (no persistence), columns cite and refuse independently.</span>
+        </li>
+        <li class="n">
+          <span class="f-name">src/server/answer.ts + src/server/domain/creators.ts</span><span class="f-min">~3 min, skim</span>
+          <span class="f-why">The Slice&nbsp;4 seam: <code>refusalText</code> / <code>buildAnswerMessages</code> now take an optional creator name so a Panel column refuses in that creator's voice; the roster is a code constant, not a table. Confirms the unscoped home-chat prompt is byte-identical to before, so the eval still grades the real path.</span>
+        </li>
+        <li class="n">
+          <span class="f-name">src/server/db/schema.ts + src/env.js</span><span class="f-min">~3 min, skim</span>
+          <span class="f-why">Schema adds the <code>creator_handle</code> column + index on <code>source</code> (the only DB change Nexus owns; Mastra manages its own <code>mastra_*</code> tables). <code>env.js</code> makes <code>CLERK_*</code> vars <strong>optional</strong> so a keyless checkout still builds and tests.</span>
+        </li>
+      </ol>
+
+      <p class="note i">Supporting cast you can glance at, not study: <code>src/app/_components/{sidebar,chat-item,prompt-box,answer}.tsx</code> (presentational), <code>layout.tsx</code> files (<code>ClerkProvider</code> + <code>NuqsAdapter</code> wiring, the app shell), the <code>sign-in</code>/<code>sign-up</code> pages (Clerk drop-ins), <code>src/styles/globals.css</code> (the light/dark theme tokens), and <code>src/server/domain/ui.ts</code> (the shared wire message type).</p>
+    </div>
+  </section>
+
+  <!-- ============ HOW IT WORKS ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker w"><span class="dot"></span>How it works</p>
+      <h2>The four moves, in detail</h2>
+
+      <h4>1 · Auth is one boundary, one identity</h4>
+      <p>Clerk's <code>clerkMiddleware</code> calls <code>auth.protect()</code> for every route that isn't public. The same <code>auth()</code> helper is read in two more places: the tRPC context and the chat route. That single <code>userId</code> is the app's whole notion of "who" — it becomes Mastra Memory's <code>resourceId</code>, which is how a user only ever sees their own threads. There is no separate users table and no session plumbing to maintain.</p>
+
+      <h4>2 · The SPA switches threads without leaving the page</h4>
+      <p>This is the LessonPlay pattern. One <code>/chats</code> page is always mounted; the active thread is just a query param. Because the flip is shallow (<code>nuqs</code> default), selecting a chat in the sidebar doesn't trigger a route change, an RSC round-trip, or a remount — it's instant. Each conversation is <code>key</code>ed by its <code>threadId</code>, so switching mounts a fresh <code>useChat</code> with its own stream while the page frame stays exactly where it is.</p>
+      <div class="beforeafter">
+        <div>
+          <p class="ba-h">The transport — client sends</p>
+<pre class="code"><code>prepareSendMessagesRequest:
+  ({ messages, id, body }) =&gt; ({
+    body: {
+      <span class="hl">message: messages.at(-1)</span>,
+      <span class="hl">threadId: id</span>,
+      ...body,
+    },
+  })</code></pre>
+        </div>
+        <div>
+          <p class="ba-h">Why it matters</p>
+<pre class="code"><code><span class="cm">// Only the NEWEST message goes</span>
+<span class="cm">// over the wire. The full history</span>
+<span class="cm">// lives in Mastra Memory, keyed</span>
+<span class="cm">// by threadId — nothing to</span>
+<span class="cm">// re-upload, and the client can't</span>
+<span class="cm">// spoof a longer "history".</span></code></pre>
+        </div>
+      </div>
+
+      <h4>3 · Memory is the store, never a model input</h4>
+      <p>A completed turn is persisted <em>after</em> it has streamed: the plain user question, and the assistant answer with its citations attached as a data part. Storing the <strong>plain question</strong> (not the evidence-stuffed prompt the model actually saw) is deliberate — it keeps the history clean for display, and it means a reloaded thread rehydrates with working <code>[n]</code> deep-links (verified with a live round-trip against Neon). Crucially, that stored history is <em>only</em> ever read back to paint the sidebar and rehydrate a thread. It is never fed into <code>retrieve()</code> or the generation prompt.</p>
+      <p class="note f">Why go to this trouble? Because Nexus's promise is that <strong>every answer is grounded in what the creator actually said, on this question alone.</strong> Conversational memory would let turn N-1 bleed into turn N's retrieval and wording — exactly the kind of ungrounded drift the product refuses to allow. Titles come from the first question deterministically, with no extra LLM call, for the same reason: keep the model on the one job it's trusted to do.</p>
+
+      <h4>4 · The Panel rides the same rails</h4>
+      <p>The Panel is one question box that fans out to a column per creator. Each column is its own <code>useChat</code> posting to the same <code>/api/chat</code> route, tagged with a <code>creatorHandle</code> that scopes retrieval and specializes the refusal to that creator's name. Columns retrieve, cite, and refuse independently — markers never cross columns — and nothing is persisted, because the Panel is ephemeral by design. It reuses the exact same <code>ask()</code> and <code>AnswerText</code> renderer as the main chat, so a citation looks and behaves identically wherever it appears.</p>
+    </div>
+  </section>
+
+  <!-- ============ DECISIONS ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker f"><span class="dot"></span>Load-bearing decisions</p>
+      <h2>The choices worth understanding before you approve</h2>
+      <p>These are the decisions that shape everything else. If any one of them is wrong for where the product is headed, this is the cheapest moment to say so.</p>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Decision</th><th>What &amp; why</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="pill f">core</span><br /><span class="dname">Memory as store only, not agent memory</span></td>
+            <td class="dwhy">The store is registered on <code>mastra</code> but never attached to <code>nexusAgent</code>. Generation stays single-turn and grounded on the current question's evidence only. This preserves the product's whole trust proposition; it is the non-goal the issue explicitly names.</td>
+          </tr>
+          <tr>
+            <td><span class="pill f">core</span><br /><span class="dname">One <code>threads.ts</code> module, two callers</span></td>
+            <td class="dwhy">The streaming route and the tRPC router both call the same persistence functions — no second copy of the contract to drift. DRY, and it means "how a thread is stored" has exactly one definition.</td>
+          </tr>
+          <tr>
+            <td><span class="pill w">spa</span><br /><span class="dname">Client-minted UUID thread ids</span></td>
+            <td class="dwhy">The id is generated up front with <code>crypto.randomUUID</code>, so a brand-new chat has a stable id before its first turn ever persists. That's what lets the <code>?id=</code> flip be shallow and instant, and what lets optimistic sidebar updates point at a real id.</td>
+          </tr>
+          <tr>
+            <td><span class="pill w">spa</span><br /><span class="dname">Newest-message-only transport</span></td>
+            <td class="dwhy">The client uploads only the latest question + <code>threadId</code>; history lives server-side. Less bandwidth, and the client can't fabricate a longer conversation than what's stored.</td>
+          </tr>
+          <tr>
+            <td><span class="pill f">store</span><br /><span class="dname">Persist the plain question, with citations</span></td>
+            <td class="dwhy">Store what the user typed (not the evidence-stuffed prompt) plus the answer's citations as a data part, so a reloaded thread rehydrates with working <code>[n]</code> deep-links. Verified against the live DB before shipping.</td>
+          </tr>
+          <tr>
+            <td><span class="pill i">auth</span><br /><span class="dname">Ownership via <code>resourceId = userId</code></span></td>
+            <td class="dwhy"><code>assertOwnership</code> returns null for a not-yet-created thread but throws <code>NOT_FOUND</code> when a thread exists under another user — so an id can never be probed across users. Writes into someone else's thread throw <code>FORBIDDEN</code>.</td>
+          </tr>
+          <tr>
+            <td><span class="pill i">auth</span><br /><span class="dname"><code>CLERK_*</code> optional in <code>env.js</code></span></td>
+            <td class="dwhy">A fresh checkout without Clerk keys still typechecks, tests, and builds. The app can't actually <em>run</em> without them, but nobody is blocked from working on the rest of the repo.</td>
+          </tr>
+          <tr>
+            <td><span class="pill f">resilience</span><br /><span class="dname">Best-effort persist after streaming</span></td>
+            <td class="dwhy">The answer streams first; the turn is saved afterward inside a <code>try/catch</code>. A store failure logs and is swallowed — it must never fail a response the user already saw.</td>
+          </tr>
+          <tr>
+            <td><span class="pill n">panel</span><br /><span class="dname"><code>creator_handle</code> as a column + code constant</span></td>
+            <td class="dwhy">The creator roster is a slug on <code>source</code> plus a display-name constant, not a <code>creator</code> table. Slice&nbsp;4 needs nothing more; the table can arrive when the community bot (#14) needs per-tenant rows. ETC — cheaper to add later than to carry unused now.</td>
+          </tr>
+          <tr>
+            <td><span class="pill n">panel</span><br /><span class="dname">Deterministic titles, per-creator refusals</span></td>
+            <td class="dwhy">Thread titles derive from the first question (no extra LLM call, unlike LessonPlay's auto-title). Refusals are specialized per creator by name, using neutral "their" — we never infer a pronoun from a name.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ VERIFICATION / OPEN ============ -->
+  <section>
+    <div class="col">
+      <p class="kicker n"><span class="dot"></span>State of the PR</p>
+      <h2>Verified, and the one thing still open</h2>
+      <p>Everything is wired and green in CI-equivalent checks. The gap is a single live browser run that needs credentials only the repo owner has.</p>
+
+      <div class="chips">
+        <div class="chip ok"><div class="k"><span class="pip"></span>typecheck</div><p><code>pnpm typecheck</code> clean.</p></div>
+        <div class="chip ok"><div class="k"><span class="pip"></span>tests</div><p><code>pnpm test</code> — 76 passed.</p></div>
+        <div class="chip ok"><div class="k"><span class="pip"></span>build</div><p><code>pnpm build</code> succeeds.</p></div>
+        <div class="chip ok"><div class="k"><span class="pip"></span>memory round-trip</div><p>Live Neon: save → recall → <code>toAISdkMessages(v6)</code>. Citations survive; script removed.</p></div>
+        <div class="chip sk"><div class="k"><span class="pip"></span>single-turn preserved</div><p>Agent has no <code>memory</code>; unscoped prompt byte-identical, so the eval still grades the real path.</p></div>
+        <div class="chip bad"><div class="k"><span class="pip"></span>live browser run</div><p>Not done — needs <code>CLERK_*</code> keys in <code>.env.local</code>. See below.</p></div>
+      </div>
+
+      <p><strong>What the owner needs to do to close it:</strong> add <code>CLERK_SECRET_KEY</code> and <code>NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY</code> to <code>.env.local</code>, run <code>pnpm dev</code>, then walk the one end-to-end path: sign in → new chat → ask → cited answer → switch threads with no remount → reload and confirm the <code>[n]</code> deep-links still work. Everything up to that manual confirmation is already wired and green.</p>
+
+      <p class="note w">New dependencies to note in review: <code>@clerk/nextjs</code>, <code>@mastra/memory</code>, <code>@mastra/pg</code>, <code>@mastra/ai-sdk</code>, <code>nuqs</code>, and a bump of <code>@mastra/core</code> → 1.66.0 (required by <code>@mastra/pg</code>'s peer). No provider SDKs were hardcoded — generation and embeddings still route through the AI Gateway.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="col">
+      <p class="oneline">A place to sign into — without letting the past change the answer.</p>
+      <p><strong>Slice 5 in one line:</strong> a Clerk-authed chat app with an instant-switching sidebar and persisted, citation-preserving history built on Mastra Memory <em>as the store</em> — deliberately never wired into the agent, so retrieval and generation stay single-turn and grounded exactly as before; the Slice&nbsp;4 Panel rides in under the same shell.</p>
+      <p style="margin-top:1rem">PR #19 · open, base <code>main</code> · 37 files, +4559 / −196 · closes #18, lands #17 · typecheck / test (76) / build green</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var btn = document.getElementById("themeToggle");
+    var root = document.documentElement;
+    function current() {
+      var set = root.getAttribute("data-theme");
+      if (set) return set;
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    btn.addEventListener("click", function () {
+      root.setAttribute("data-theme", current() === "dark" ? "light" : "dark");
+    });
+  })();
+</script>
+</body>
+</html>
