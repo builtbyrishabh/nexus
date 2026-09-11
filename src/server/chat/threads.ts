@@ -16,10 +16,15 @@ import { storage } from "~/server/mastra";
  * This is the ONE place thread operations live, so the streaming route (`/api/chat`) and the
  * `chats` tRPC router share the exact same persistence contract — no second copy to drift.
  *
- * Design note (load-bearing): generation is single-turn and grounded on the current question's
- * evidence only (see `~/server/mastra`). Memory is used purely as the store — we persist the
- * user's *plain question* and the assistant's answer (+ its citations) so the sidebar has real
- * history to switch between. We never feed prior turns back into retrieval or generation.
+ * Design note (load-bearing): we persist the user's *plain question* and the assistant's answer
+ * (+ its citations) — never the evidence packet. That clean history serves two readers: the
+ * sidebar (thread list + rehydration) and, via `recallModelMessages`, the model itself, which now
+ * receives prior turns as conversational context so it can resolve references across turns.
+ *
+ * The boundary that stays fixed: history is context for *generation only*. Retrieval still runs on
+ * the current question alone, and every claim is still grounded in — and cited to — the current
+ * turn's Evidence. History is never a retrieval input and never a grounding source, so the refusal
+ * contract and the eval (which runs single-turn, no history) are untouched.
  */
 
 // One Memory instance over the shared Postgres storage. Cheap to construct, but a singleton keeps
@@ -92,6 +97,28 @@ export async function loadThreadMessages(
       role: m.role,
       parts: m.parts,
     })) as unknown as NexusUIMessage[];
+}
+
+/**
+ * The thread's prior turns as plain model messages (text only), oldest→newest, ready to prepend to
+ * the current turn for conversational recall. Because we only ever store the plain question + answer
+ * (no evidence), this is exactly the clean context the model should see — the current turn's Evidence
+ * packet is added separately by `ask()`. Empty for a fresh or unknown thread.
+ */
+export async function recallModelMessages(
+  threadId: string,
+  userId: string,
+): Promise<{ role: "user" | "assistant"; content: string }[]> {
+  const ui = await loadThreadMessages(threadId, userId);
+  return ui
+    .map((m) => ({
+      role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+      content: m.parts
+        .filter((p): p is { type: "text"; text: string } => p.type === "text")
+        .map((p) => p.text)
+        .join(""),
+    }))
+    .filter((m) => m.content.trim().length > 0);
 }
 
 export async function renameThread(

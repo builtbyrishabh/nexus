@@ -110,26 +110,43 @@ function CreatorColumn({
   }, [register, handle, sendMessage]);
   useEffect(() => reportStatus(handle, status), [reportStatus, handle, status]);
 
-  const answers = messages.filter((m) => m.role === "assistant");
+  const waiting =
+    status === "submitted" && messages.at(-1)?.role === "user";
 
   return (
     <section className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
       <h2 className="text-lg font-medium text-ink">{displayName}</h2>
-      {answers.length === 0 ? (
+      {messages.length === 0 ? (
         <p className="text-sm text-muted">
           {status === "streaming" || status === "submitted"
             ? "Thinking…"
             : "Awaiting the panel’s question."}
         </p>
       ) : (
-        answers.map((message) => (
-          <div
-            key={message.id}
-            className="rounded-xl bg-elevated px-3 py-2 text-ink"
-          >
-            <AnswerText text={textOf(message)} citations={citationsOf(message)} />
-          </div>
-        ))
+        <>
+          {/* Full running conversation for this creator — follow-ups build on prior turns. */}
+          {messages.map((message) =>
+            message.role === "user" ? (
+              <p
+                key={message.id}
+                className="text-xs font-medium uppercase tracking-wide text-muted"
+              >
+                {textOf(message)}
+              </p>
+            ) : (
+              <div
+                key={message.id}
+                className="rounded-xl bg-elevated px-3 py-2 text-ink"
+              >
+                <AnswerText
+                  text={textOf(message)}
+                  citations={citationsOf(message)}
+                />
+              </div>
+            ),
+          )}
+          {waiting && <p className="text-sm text-muted">Thinking…</p>}
+        </>
       )}
     </section>
   );

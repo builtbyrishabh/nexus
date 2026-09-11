@@ -1,3 +1,5 @@
+import type { ModelMessage } from "ai";
+
 import { buildAnswerMessages, refusalText } from "~/server/answer";
 import { evidenceToCitations } from "~/server/domain/citations";
 import { displayNameFor } from "~/server/domain/creators";
@@ -53,9 +55,11 @@ export async function prepareAnswer(
 /**
  * The one entrypoint every surface calls. Web, Discord, and Telegram all reduce to this.
  *
- * Slice 0 flow (fixed, single-turn): retrieve → emit citations/sources up front → build a
- * numbered evidence packet → stream a grounded answer with inline [n] markers. Query rewrite
- * is identity here; conversational memory and the agentic loop come later.
+ * Flow: retrieve → emit citations/sources up front → build a numbered evidence packet → stream a
+ * grounded answer with inline [n] markers. Prior turns (`input.history`) are prepended so the model
+ * can resolve cross-turn references, but retrieval still runs on the current question alone (query
+ * rewrite is identity here) and grounding stays on this turn's Evidence — history is context, not a
+ * source. Absent history = single-turn (the eval path). The agentic loop comes later.
  */
 export async function* ask(input: Ask): AsyncGenerator<AskChunk> {
   const { evidence, messages, creatorName } = await prepareAnswer(input.query, {
@@ -71,7 +75,9 @@ export async function* ask(input: Ask): AsyncGenerator<AskChunk> {
     return;
   }
 
-  const out = await nexusAgent.stream(messages);
+  // Prior turns as plain context, then the current turn (which carries the Evidence packet).
+  const turn: ModelMessage[] = [...(input.history ?? []), ...messages];
+  const out = await nexusAgent.stream(turn);
 
   const reader = out.textStream.getReader();
   try {

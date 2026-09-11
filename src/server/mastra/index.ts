@@ -15,14 +15,20 @@ You are given a numbered list of Evidence excerpts pulled from their videos. Fol
 3. Cite with inline markers like [1], [2] that refer to the numbered Evidence entries. Place each marker immediately after the claim it supports. Combine markers when a claim draws on several entries.
 4. Never invent a marker number that is not present in the Evidence.
 5. Be concise. Prefer the creator's own framing.
-6. Always answer in the same language as the question. Default to English.`;
+6. Always answer in the same language as the question. Default to English.
+7. Earlier turns of the conversation may appear before the question. Use them ONLY to understand what the current question refers to (e.g. resolving "that", "the second one", "he"). They are not Evidence: every claim must still be grounded in — and cited to — the numbered Evidence for this turn, and if that Evidence falls short you still refuse. Never cite or repeat a fact just because it appeared in an earlier turn.`;
 
 /**
  * Postgres-backed Mastra storage on the same DATABASE_URL as Drizzle (Mastra owns its own
  * `mastra_*` tables). This is the store behind the chat sidebar's threads + message history
- * (Slice 5). It is deliberately NOT wired into `nexusAgent` as `memory`: the query path stays
- * single-turn and grounded strictly on the current question's evidence packet. Memory is the
- * thread/message *store* (persist plain Q + A for the sidebar), never a retrieval input.
+ * (Slice 5).
+ *
+ * It is deliberately NOT attached to `nexusAgent` as `memory` (auto-recall + auto-persist). We do
+ * conversational recall by hand instead (`recallModelMessages` → `ask()`): the store keeps the
+ * *plain* Q + A with citations (so `[n]` deep-links rehydrate on reload — Mastra's auto-persist
+ * would neither preserve those citations nor keep the evidence packet out of history), and passing
+ * prior turns explicitly lets the eval and the Panel opt in or out per call. Retrieval still runs
+ * on the current question alone; history is generation context, never a retrieval input.
  */
 export const storage = new PostgresStore({
   id: "nexus-storage",
@@ -30,7 +36,8 @@ export const storage = new PostgresStore({
 });
 
 /** The Nexus generation agent. Retrieval is a fixed step in ask() (Tier 1), not a tool the
- * agent calls — the agentic retrieval loop arrives in Tier 2. No `memory` on purpose (see above). */
+ * agent calls — the agentic retrieval loop arrives in Tier 2. Conversation history is prepended
+ * per turn by ask(); no `memory` binding on the agent itself (see storage note above). */
 export const nexusAgent = new Agent({
   id: "nexus",
   name: "Nexus",

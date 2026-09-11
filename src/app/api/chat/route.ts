@@ -5,8 +5,8 @@ import {
 } from "ai";
 
 import { ask } from "~/server/ask";
-import { persistTurn } from "~/server/chat/threads";
-import type { Citation } from "~/server/domain/types";
+import { persistTurn, recallModelMessages } from "~/server/chat/threads";
+import type { Citation, HistoryMessage } from "~/server/domain/types";
 import type { NexusUIMessage } from "~/server/domain/ui";
 
 export const runtime = "nodejs";
@@ -24,13 +24,15 @@ function textOfMessage(message: NexusUIMessage | undefined): string {
 }
 
 /**
- * The single streaming query path, shared by two callers:
- *   - the main chat sends `{ message, threadId }` — only the newest user message (history lives
- *     in Mastra Memory) — and its turn is persisted for the sidebar.
- *   - the Panel sends `{ messages, creatorHandle }` — ephemeral, scoped to one creator, not saved.
+ * The single streaming query path, shared by two callers, each supplying conversation history a
+ * different way:
+ *   - the main chat sends `{ message, threadId }` — only the newest user message; prior turns are
+ *     recalled server-side from the store (keyed by threadId) — and its turn is persisted.
+ *   - the Panel sends `{ messages, creatorHandle }` — the full per-column transcript, ephemeral
+ *     and scoped to one creator; prior turns come straight off the request, nothing is saved.
  *
- * Both reduce to `ask()` (single-turn, grounded, cited). Auth is required for either: everything
- * under the app shell is behind Clerk.
+ * Both reduce to `ask()` (grounded, cited; multi-turn context, single-turn retrieval). Auth is
+ * required for either: everything under the app shell is behind Clerk.
  */
 export async function POST(req: Request) {
   const { userId } = await auth();
@@ -52,6 +54,21 @@ export async function POST(req: Request) {
     ? textOfMessage(message)
     : textOfMessage(messages?.[messages.length - 1]);
 
+  // Prior turns as plain context. Main chat: recall from the store (never trust the client with
+  // history). Panel: the client owns the ephemeral transcript, so take all but the newest message.
+  let history: HistoryMessage[] = [];
+  if (message && threadId) {
+    history = await recallModelMessages(threadId, userId);
+  } else if (messages && messages.length > 1) {
+    history = messages
+      .slice(0, -1)
+      .map((m) => ({
+        role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+        content: textOfMessage(m),
+      }))
+      .filter((m) => m.content.length > 0);
+  }
+
   const stream = createUIMessageStream<NexusUIMessage>({
     execute: async ({ writer }) => {
       const textId = crypto.randomUUID();
@@ -65,6 +82,7 @@ export async function POST(req: Request) {
         userId,
         threadId: threadId ?? `web:${userId}`,
         creatorHandle, // absent on the main chat (unscoped); set per column on /panel
+        history, // recalled (main chat) or client-supplied (panel); empty = single-turn
       })) {
         if (chunk.citations) {
           citations = chunk.citations;
