@@ -26,17 +26,6 @@ vi.mock("~/server/mastra", () => ({
 }));
 vi.mock("~/server/chat/threads", () => ({
   assertThreadOwner: mocks.assertThreadOwner,
-  persistTurn: vi.fn(),
-  recallModelMessages: vi.fn().mockResolvedValue([]),
-}));
-vi.mock("~/server/ask", () => ({
-  ask: async function* () {
-    return;
-  },
-}));
-vi.mock("~/server/domain/roster", () => ({
-  listCreators: vi.fn().mockResolvedValue([]),
-  creatorNameMap: vi.fn().mockReturnValue({}),
 }));
 
 const { POST } = await import("~/app/api/chat/route");

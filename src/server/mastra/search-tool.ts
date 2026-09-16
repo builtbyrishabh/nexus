@@ -33,7 +33,6 @@ export const searchCreatorCatalog = createTool({
   execute: async ({ query }) => {
     const evidence = await retrieve(query, {
       topK: ANSWER_TOP_K,
-      rerank: true,
     });
 
     return { evidence: evidence.map(toCatalogEvidence) };

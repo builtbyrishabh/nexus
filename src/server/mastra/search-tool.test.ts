@@ -38,7 +38,7 @@ function executionContext() {
 
 describe("searchCreatorCatalog", () => {
   it("rejects queries longer than 500 characters", () => {
-    const schema = searchCreatorCatalog.inputSchema as z.ZodTypeAny;
+    const schema = searchCreatorCatalog.inputSchema as unknown as z.ZodTypeAny;
 
     expect(schema.safeParse({ query: "x".repeat(501) }).success).toBe(false);
   });
@@ -52,7 +52,6 @@ describe("searchCreatorCatalog", () => {
 
     expect(mocks.retrieve).toHaveBeenCalledWith("pricing advice", {
       topK: 5,
-      rerank: true,
     });
     expect(result).toEqual({
       evidence: [

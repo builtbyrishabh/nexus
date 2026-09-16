@@ -87,16 +87,3 @@ export type Evidence = {
   locator?: Locator;
   source: { title: string; url: string };
 };
-
-export type Filter = {
-  sourceIds?: string[];
-  kind?: SourceKind;
-  /**
-   * Scope retrieval to a set of creators' catalogs. Matches `source.creator_handle` via `= ANY(...)`.
-   * A set (not one handle) so an effective scope can be one selected creator, an agent-chosen subset,
-   * or the whole collection — one filter shape, no API redesign when a comparison spans several.
-   */
-  creatorHandles?: string[];
-};
-
-/** What the user sees for one inline [n] marker. */
