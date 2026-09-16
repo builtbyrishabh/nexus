@@ -29,8 +29,9 @@ You have one tool, \`searchCreatorCatalog\`. Every question is answered in two s
  * conversational recall by hand instead (`recallModelMessages` → `ask()`): the store keeps the
  * *plain* Q + A with citations (so `[n]` deep-links rehydrate on reload — Mastra's auto-persist
  * would neither preserve those citations nor keep the evidence packet out of history), and passing
- * prior turns explicitly lets the eval and the Panel opt in or out per call. Retrieval still runs
- * on the current question alone; history is generation context, never a retrieval input.
+ * prior turns explicitly lets the eval opt out (single-turn) while the web chat passes recalled
+ * history. Retrieval still runs on the current question alone; history is generation context, never a
+ * retrieval input.
  */
 export const storage = new PostgresStore({
   id: "nexus-storage",

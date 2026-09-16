@@ -1,6 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
 
-import { env } from "~/env";
 import { db } from "~/server/db";
 import { chunk, source } from "~/server/db/schema";
 import type { Evidence, Filter } from "~/server/domain/types";
@@ -10,7 +9,7 @@ import {
   neighborCoords,
   neighborKey,
 } from "~/server/retrieval/neighbors";
-import { rerankDocuments } from "~/server/retrieval/rerank";
+import { RERANK_DEFAULT, rerankDocuments } from "~/server/retrieval/rerank";
 import { rrfFuse } from "~/server/retrieval/rrf";
 
 // Canonical settings (docs/ARCHITECTURE.md): each retriever returns a top-20 candidate pool;
@@ -191,7 +190,7 @@ async function expandNeighbors(
  * Internals: dense (pgvector cosine) + sparse (tsv/BM25) each retrieve a top-20 pool, fused by
  * RRF (k=60) into one ranking. When reranking is on (Slice 2), the fused top-20 is scored by a
  * cross-encoder and cut to top-K; otherwise the fused top-K stands. Either way the survivors are
- * widened with their ±1 neighbors. Rerank defaults to `env.RERANK_ENABLED` (best-effort: a provider
+ * widened with their ±1 neighbors. Rerank defaults to `RERANK_DEFAULT` (best-effort: a provider
  * failure falls back to the fused order) and is overridable per-call so the eval harness can
  * measure its lift (strict: an explicit `rerank: true` propagates provider failures). Evidence.score carries the ranker's score
  * (rerank relevance when reranked, fused RRF score otherwise). Callers never see the difference.
@@ -203,7 +202,7 @@ export async function retrieve(
   const topK = opts?.topK ?? 5;
   // An explicit `rerank` is a request for that pipeline; only the env default is best-effort.
   const rerankExplicit = opts?.rerank !== undefined;
-  const useRerank = opts?.rerank ?? env.RERANK_ENABLED;
+  const useRerank = opts?.rerank ?? RERANK_DEFAULT;
   const conditions = filterConditions(opts?.filter);
 
   // Only dense needs the embedding; start it, then overlap the round trip with the sparse search

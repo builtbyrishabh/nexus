@@ -23,10 +23,9 @@ export type GoldenCase = {
   expectRefusal?: boolean;
   /**
    * Scope inputs for the issue #20 path (all optional; unset = whole default collection, single-turn).
-   * `selected` pins the user's explicit creator(s); `collection` overrides the searchable roster;
-   * `history` supplies prior turns so a follow-up can be graded on reference resolution.
+   * `collection` overrides the searchable roster; `history` supplies prior turns so a follow-up can be
+   * graded on reference resolution.
    */
-  selected?: string[];
   collection?: string[];
   history?: HistoryMessage[];
   note?: string;

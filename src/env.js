@@ -43,12 +43,6 @@ export const env = createEnv({
      * fusion and neighbor expansion. Provider is swappable (Cohere/Voyage/…) via this one knob.
      */
     RERANK_MODEL: z.string().default("cohere/rerank-v3.5"),
-    /**
-     * Rerank is off by default: it is the *measured* add-on (docs/DESIGN.md §7), so retrieve()
-     * behaves exactly as Slice 1 until this flips on. The eval harness overrides it per-run to
-     * measure the lift rather than assert it.
-     */
-    RERANK_ENABLED: booleanFlag("true"),
     /** LLM judge for the eval scorers (Faithfulness/Answer-Relevancy/Context-Precision). */
     EVAL_MODEL: z.string().default("openai/gpt-5.6-luna"),
     /**
@@ -89,7 +83,6 @@ export const env = createEnv({
     CONTEXT_MODEL: process.env.CONTEXT_MODEL,
     EMBED_MODEL: process.env.EMBED_MODEL,
     RERANK_MODEL: process.env.RERANK_MODEL,
-    RERANK_ENABLED: process.env.RERANK_ENABLED,
     EVAL_MODEL: process.env.EVAL_MODEL,
     TRANSCRIBE_FALLBACK: process.env.TRANSCRIBE_FALLBACK,
     ASSEMBLYAI_API_KEY: process.env.ASSEMBLYAI_API_KEY,

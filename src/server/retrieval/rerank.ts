@@ -38,6 +38,15 @@ export function aboveFloor(
 }
 
 /**
+ * The one reranking default, shared by production (`searchCreatorCatalog`) and the eval suite so
+ * evals grade exactly what users receive. Reranking is the product behavior; the eval overrides it
+ * per-run (`pnpm eval --rerank/--no-rerank/--compare`) to measure the lift. Passed explicitly at
+ * both call sites so a provider failure throws as an operational error rather than silently
+ * falling back to fused top-K.
+ */
+export const RERANK_DEFAULT = true;
+
+/**
  * Cross-encoder rerank of candidate chunks against the query → the top-N most relevant, best
  * first. Unlike RRF (which only sees rank positions), the reranker reads the query and each
  * chunk's text together, so it can catch relevance that bi-encoder recall missed. This is the

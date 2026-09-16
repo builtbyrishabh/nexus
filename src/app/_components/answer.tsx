@@ -20,8 +20,7 @@ export function textOf(message: NexusUIMessage): string {
 }
 
 /**
- * Render assistant text, turning inline [n] markers into timestamped deep-links. Shared by the
- * home chat and every Panel column so a citation renders identically wherever an answer appears.
+ * Render assistant text, turning inline [n] markers into timestamped deep-links.
  */
 export function AnswerText({
   text,

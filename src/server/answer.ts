@@ -5,8 +5,8 @@
  * the eval harness uses it to detect refusals — one definition, every reader → no drift. Neutral
  * "their" on purpose: we never infer a pronoun from a creator's name.
  *
- * Unscoped (home chat, eval across the whole corpus) passes no name and gets a neutral sentence;
- * a Panel column passes its creator's display name. Both are the product's one refusal voice.
+ * A whole-collection scope passes no name and gets a neutral sentence; a scope that resolves to a
+ * single creator passes their display name. Both are the product's one refusal voice.
  */
 export function refusalText(creatorName?: string): string {
   return creatorName

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { buildEvidencePacket } from "~/server/domain/citations";
 import { resolveScope } from "~/server/domain/scope";
 import type { Evidence } from "~/server/domain/types";
+import { RERANK_DEFAULT } from "~/server/retrieval/rerank";
 import { retrieve } from "~/server/retrieval/retrieve";
 
 /** How much evidence one answer reads. The one retrieval knob, shared across every caller. */
@@ -62,9 +63,9 @@ const inputSchema = z.object({
  * The one retrieval tool the agent calls. It wraps the existing `retrieve()` pipeline (dense +
  * full-text → RRF → rerank → neighbors) behind the issue #20 scope contract:
  *
- *   - Server-owned scope (`collectionCreatorHandles`, `selectedCreatorHandles`) comes off the
- *     RequestContext; the model only supplies `query` + an optional `creatorHandles` narrowing.
- *     `resolveScope` decides the effective set (selection > agent choice > whole collection).
+ *   - Server-owned scope (`collectionCreatorHandles`) comes off the RequestContext; the model only
+ *     supplies `query` + an optional `creatorHandles` narrowing. `resolveScope` decides the effective
+ *     set (agent choice within the collection, else the whole collection).
  *   - Strict rerank (`rerank: true`) so a provider failure THROWS (an operational error) instead of
  *     silently dropping past the calibrated relevance floor and looking like "never covered".
  *   - Every non-ok outcome (empty collection, invalid scope, empty evidence) records itself in the
@@ -90,11 +91,8 @@ export const searchCreatorCatalog = createTool({
 
     const collection =
       (requestContext.getRaw("collectionCreatorHandles") as string[] | undefined) ?? [];
-    const selected = requestContext.getRaw("selectedCreatorHandles") as
-      | string[]
-      | undefined;
 
-    const scope = resolveScope({ collection, selected, agentChoice: creatorHandles });
+    const scope = resolveScope({ collection, agentChoice: creatorHandles });
     if (scope.kind === "empty_collection") {
       capture.outcome = "empty_collection";
       capture.evidence = [];
@@ -110,7 +108,8 @@ export const searchCreatorCatalog = createTool({
     capture.effectiveHandles = scope.handles;
 
     // A provider failure here throws → surfaces as an operational error upstream, never a refusal.
-    const rerank = (requestContext.getRaw("rerank") as boolean | undefined) ?? true;
+    const rerank =
+      (requestContext.getRaw("rerank") as boolean | undefined) ?? RERANK_DEFAULT;
     const evidence = await retrieve(query.slice(0, MAX_QUERY_LEN), {
       topK: ANSWER_TOP_K,
       rerank,

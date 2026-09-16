@@ -1,7 +1,6 @@
 import { Sidebar } from "~/app/_components/sidebar";
 
-// The signed-in surfaces (chat + panel) all live behind the same shell. Depends on the current
-// user, so never prerender.
+// The signed-in chat lives behind this shell. Depends on the current user, so never prerender.
 export const dynamic = "force-dynamic";
 
 export default function AppLayout({

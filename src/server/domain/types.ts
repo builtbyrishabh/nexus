@@ -108,13 +108,6 @@ export type Citation = {
   deepLink?: string; // https://youtu.be/<id>?t=724
 };
 
-/** A deduped source card (one per video). */
-export type SourceCard = {
-  sourceId: string;
-  title: string;
-  url: string;
-};
-
 /** A prior turn fed to the model as conversational context — plain text only, never evidence. */
 export type HistoryMessage = {
   role: "user" | "assistant";
@@ -124,21 +117,12 @@ export type HistoryMessage = {
 /** One message into the single entrypoint. */
 export type Ask = {
   query: string;
-  channel: "web" | "discord" | "telegram";
-  userId: string;
-  threadId: string;
   /**
    * The creators this request may search — server-owned, resolved at the request boundary, NEVER
    * supplied by the model. The agent can only narrow within this set; an empty set means no
    * searchable scope (never an unrestricted query). Defaults to the configured collection.
    */
   collectionCreatorHandles: string[];
-  /**
-   * The user's explicit creator selection (a Panel column pins one). Validated against the
-   * collection at the boundary. When present it overrides the agent's choice; when absent the
-   * agent may choose creators from the collection, or the whole collection is searched.
-   */
-  selectedCreatorHandles?: string[];
   /**
    * handle → display name for the creators in scope, resolved at the request boundary (override →
    * channel author → handle). Lets the streaming path name a single-creator refusal without its own
@@ -147,10 +131,10 @@ export type Ask = {
   creatorNames?: Record<string, string>;
   /**
    * Prior turns of this conversation, oldest→newest, so the model can resolve references like
-   * "the second one" across turns. Supplied by the caller: the main chat recalls it from the
-   * store (keyed by threadId), the Panel carries it up from the client (ephemeral). Absent =
-   * single-turn (the eval path). History is context for the model's search query and answer, never
-   * itself Evidence — grounding stays on the Evidence the tool returns this turn.
+   * "the second one" across turns. Supplied by the caller: the web chat recalls it from the store
+   * (keyed by threadId). Absent = single-turn (the eval path). History is context for the model's
+   * search query and answer, never itself Evidence — grounding stays on the Evidence the tool
+   * returns this turn.
    */
   history?: HistoryMessage[];
   /** Client cancellation, propagated to the model call so a disconnect stops generation. */
@@ -161,5 +145,4 @@ export type Ask = {
 export type AskChunk = {
   textDelta?: string;
   citations?: Citation[];
-  sources?: SourceCard[];
 };
