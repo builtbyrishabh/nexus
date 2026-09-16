@@ -1,4 +1,4 @@
-import { isRefusal, REFUSAL_TEXT } from "~/server/answer";
+import { isRefusal, refusalText } from "~/server/answer";
 import { prepareAnswer } from "~/server/ask";
 import { evidenceText, evidenceToCitations } from "~/server/domain/citations";
 import { GOLDEN_SET, validateGolden, type GoldenCase } from "~/server/evals/golden";
@@ -28,12 +28,14 @@ const ZERO_SCORES = {
  * instead of quietly dropping out of them (see summary.ts).
  */
 async function runCase(c: GoldenCase, rerank: boolean): Promise<CaseResult> {
-  const { evidence, messages } = await prepareAnswer(c.query, { rerank });
+  const { evidence, messages, creatorName } = await prepareAnswer(c.query, {
+    rerank,
+  });
   const answer = messages
     ? (await nexusAgent.generate(messages)).text
-    : REFUSAL_TEXT;
+    : refusalText(creatorName);
 
-  const refused = isRefusal(answer);
+  const refused = isRefusal(answer, creatorName);
   const scores = c.expectRefusal
     ? undefined
     : refused

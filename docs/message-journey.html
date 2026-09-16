@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Journey of a Message · Nexus</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #121722;
+    --panel-2: #171d2b;
+    --line: #232c3d;
+    --ink: #e8edf6;
+    --muted: #93a1b8;
+    --faint: #64748b;
+    --accent: #7c9cff;
+    --accent-2: #4dd6b0;
+    --warn: #ffb454;
+    --pink: #ff7ab6;
+    --user: #7c9cff;
+    --model: #4dd6b0;
+    --store: #ffb454;
+    --code: #0e131d;
+    --radius: 16px;
+    --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 700px at 80% -10%, #1a2338 0%, transparent 55%),
+                radial-gradient(1000px 600px at -10% 10%, #16231f 0%, transparent 50%),
+                var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 22px 120px; }
+
+  /* Hero */
+  header.hero {
+    padding: 88px 22px 40px;
+    max-width: 920px;
+    margin: 0 auto;
+  }
+  .kicker {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid var(--line);
+    background: var(--panel);
+    padding: 6px 12px;
+    border-radius: 999px;
+  }
+  h1 {
+    font-size: clamp(34px, 6vw, 56px);
+    line-height: 1.05;
+    margin: 22px 0 14px;
+    letter-spacing: -0.02em;
+    background: linear-gradient(120deg, #fff 10%, var(--accent) 60%, var(--accent-2) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .sub { color: var(--muted); font-size: 19px; max-width: 640px; }
+  .sub b { color: var(--ink); font-weight: 600; }
+
+  /* ELI5 callout */
+  .eli5 {
+    margin: 30px auto 0;
+    max-width: 920px;
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--panel-2), var(--panel));
+    border-radius: var(--radius);
+    padding: 22px 24px;
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .eli5 .emoji { font-size: 30px; line-height: 1; }
+  .eli5 h3 { margin: 0 0 6px; font-size: 16px; }
+  .eli5 p { margin: 0; color: var(--muted); }
+
+  /* Cast strip */
+  .cast {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin: 46px 0 10px;
+  }
+  .actor {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 14px;
+    padding: 16px 14px;
+    text-align: center;
+  }
+  .actor .dot { width: 12px; height: 12px; border-radius: 50%; margin: 0 auto 10px; }
+  .actor .name { font-weight: 600; font-size: 14px; }
+  .actor .role { color: var(--faint); font-size: 12px; margin-top: 3px; }
+  @media (max-width: 720px) { .cast { grid-template-columns: repeat(2, 1fr); } }
+
+  /* Section headings */
+  .turn-band {
+    margin: 66px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .turn-band .num {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--bg);
+    background: var(--accent);
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-weight: 700;
+  }
+  .turn-band h2 { margin: 0; font-size: 26px; letter-spacing: -0.01em; }
+  .turn-band .tag { color: var(--faint); font-family: var(--mono); font-size: 12px; }
+
+  /* Stage card */
+  .stage {
+    position: relative;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+    margin: 18px 0;
+  }
+  .stage::before {
+    content: "";
+    position: absolute;
+    left: -1px; top: 22px; bottom: 22px;
+    width: 3px;
+    border-radius: 3px;
+    background: var(--accent);
+  }
+  .stage.user::before { background: var(--user); }
+  .stage.model::before { background: var(--model); }
+  .stage.store::before { background: var(--store); }
+
+  .stage-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .step-chip {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    padding: 3px 9px;
+    border-radius: 7px;
+    background: var(--panel-2);
+  }
+  .stage h3 { margin: 0; font-size: 19px; }
+  .where { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .stage p.lede { color: var(--muted); margin: 12px 0 0; }
+  .stage p.lede b { color: var(--ink); }
+
+  /* Code blocks */
+  pre {
+    background: var(--code);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.65;
+    margin: 16px 0 4px;
+    color: #cdd6e6;
+  }
+  pre .k { color: var(--pink); }
+  pre .s { color: var(--accent-2); }
+  pre .n { color: var(--warn); }
+  pre .c { color: var(--faint); font-style: italic; }
+  pre .m { color: var(--accent); }
+  pre .label { color: var(--faint); }
+  .codecap {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--faint);
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    margin: 14px 0 -6px;
+  }
+
+  /* transform arrow */
+  .arrow {
+    text-align: center;
+    color: var(--faint);
+    font-size: 13px;
+    font-family: var(--mono);
+    margin: 6px 0;
+    letter-spacing: .05em;
+  }
+  .arrow span { color: var(--accent); }
+
+  /* Aha box */
+  .aha {
+    border: 1px solid #2c3b4d;
+    background: linear-gradient(180deg, rgba(124,156,255,.10), rgba(77,214,176,.05));
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin: 16px 0;
+    display: flex;
+    gap: 14px;
+  }
+  .aha .bulb { font-size: 22px; }
+  .aha b { color: var(--accent-2); }
+  .aha p { margin: 0; color: var(--muted); }
+
+  /* two-view compare */
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0; }
+  @media (max-width: 720px){ .compare { grid-template-columns: 1fr; } }
+  .view { border-radius: 12px; border: 1px solid var(--line); overflow: hidden; }
+  .view .vhead { padding: 10px 14px; font-family: var(--mono); font-size: 12px; font-weight: 700; }
+  .view.model .vhead { background: rgba(77,214,176,.12); color: var(--model); }
+  .view.store .vhead { background: rgba(255,180,84,.12); color: var(--store); }
+  .view pre { border: 0; border-radius: 0; margin: 0; background: var(--code); }
+
+  /* final recap */
+  .recap {
+    margin-top: 60px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+    padding: 8px 4px;
+  }
+  .recap table { width: 100%; border-collapse: collapse; }
+  .recap th, .recap td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .recap th { color: var(--faint); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+  .recap td:first-child { font-family: var(--mono); font-size: 12px; color: var(--accent); white-space: nowrap; }
+  .recap tr:last-child td { border-bottom: 0; }
+  .recap td b { color: var(--ink); }
+  .recap td .muted { color: var(--muted); }
+
+  footer { color: var(--faint); font-size: 13px; text-align: center; margin-top: 60px; }
+  code.inline { font-family: var(--mono); font-size: .9em; background: var(--panel-2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; color: var(--accent); }
+  .divider { height: 1px; background: var(--line); margin: 8px 0; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <span class="kicker">Nexus · main chat</span>
+  <h1>The Journey of a Message</h1>
+  <p class="sub">You type one sentence. By the time the model reads it, it has been <b>rewritten twice</b>. On the way back it gets rewritten again before it's saved. This is every stop on that trip — with the <b>real</b> text at each stop.</p>
+</header>
+
+<div class="eli5">
+  <div class="emoji">📚</div>
+  <div>
+    <h3>The whole thing in one picture</h3>
+    <p>Think of Nexus as a <b>librarian</b>. You ask a question. The librarian doesn't answer from memory — they run to the shelves, grab 5 relevant quotes, staple them to your question, and hand that fat packet to a <b>reader</b> who can only answer using those quotes. The reader writes an answer with little footnote numbers. Then the librarian files a <b>clean copy</b> of just your question + the answer (no quotes) so tomorrow they remember the conversation. That's it. The rest of this page is just those steps, slowed down.</p>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="cast">
+    <div class="actor"><div class="dot" style="background:var(--user)"></div><div class="name">Browser</div><div class="role">what you type</div></div>
+    <div class="actor"><div class="dot" style="background:var(--accent)"></div><div class="name">Route</div><div class="role">/api/chat</div></div>
+    <div class="actor"><div class="dot" style="background:var(--pink)"></div><div class="name">ask()</div><div class="role">retrieve + build</div></div>
+    <div class="actor"><div class="dot" style="background:var(--model)"></div><div class="name">Model</div><div class="role">writes answer</div></div>
+    <div class="actor"><div class="dot" style="background:var(--store)"></div><div class="name">Store</div><div class="role">Postgres memory</div></div>
+  </div>
+
+  <!-- ================= TURN 1 ================= -->
+  <div class="turn-band">
+    <span class="num">TURN 1</span>
+    <h2>A fresh chat, first question</h2>
+  </div>
+  <p class="sub" style="font-size:16px; margin-top:6px;">You type: <code class="inline">What does Hormozi say about pricing?</code></p>
+
+  <!-- Stage 1 -->
+  <div class="stage user">
+    <div class="stage-head">
+      <span class="step-chip">STEP 1</span>
+      <h3>The browser sends the bare minimum</h3>
+      <span class="where">chat-conversation.tsx</span>
+    </div>
+    <p class="lede">The chat box does <b>not</b> upload the whole conversation. It sends only your <b>newest</b> message and a <code class="inline">threadId</code> (which chat this is). Everything older lives on the server, so there's nothing to re-upload.</p>
+    <div class="codecap">POST /api/chat — request body</div>
+<pre>{
+  <span class="k">"message"</span>: {
+    <span class="k">"id"</span>: <span class="s">"msg_a1"</span>,
+    <span class="k">"role"</span>: <span class="s">"user"</span>,
+    <span class="k">"parts"</span>: [{ <span class="k">"type"</span>: <span class="s">"text"</span>, <span class="k">"text"</span>: <span class="s">"What does Hormozi say about pricing?"</span> }]
+  },
+  <span class="k">"threadId"</span>: <span class="s">"thread_xyz"</span>
+}</pre>
+  </div>
+
+  <div class="arrow">▼ &nbsp; server pulls out the plain text &nbsp; <span>+</span> &nbsp; looks up who you are</div>
+
+  <!-- Stage 2 -->
+  <div class="stage">
+    <div class="stage-head">
+      <span class="step-chip">STEP 2</span>
+      <h3>The route unpacks it &amp; fetches past turns</h3>
+      <span class="where">api/chat/route.ts</span>
+    </div>
+    <p class="lede">Clerk confirms you're logged in (gives a <code class="inline">userId</code>). It squeezes the text out of the parts into a plain <code class="inline">query</code> string. Then it asks the store: <b>"what was said earlier in this thread?"</b> — this is the <b>recall</b> step. On turn 1 there's nothing yet, so history is empty.</p>
+    <div class="codecap">what the route now holds</div>
+<pre><span class="label">query   </span> = <span class="s">"What does Hormozi say about pricing?"</span>
+<span class="label">userId  </span> = <span class="s">"user_42"</span>       <span class="c">// from Clerk, never trusted from the client</span>
+<span class="label">history </span> = []                <span class="c">// recallModelMessages(thread_xyz) → empty on turn 1</span></pre>
+    <p class="lede" style="margin-top:14px;">It hands all of that to the one function every surface funnels through: <code class="inline">ask()</code>.</p>
+  </div>
+
+  <div class="arrow">▼ &nbsp; <span>now the interesting part</span> &nbsp; — the message gets FATTER</div>
+
+  <!-- Stage 3 -->
+  <div class="stage" style="--accent: var(--pink);">
+    <div class="stage-head">
+      <span class="step-chip">STEP 3</span>
+      <h3>ask() runs to the shelves and staples quotes on</h3>
+      <span class="where">ask.ts → retrieve() → answer.ts</span>
+    </div>
+    <p class="lede">This is the librarian sprinting to the shelves. <code class="inline">retrieve()</code> searches the video transcripts for the 5 chunks most related to your question. Those become <b>Evidence</b>. Two things then happen to that evidence:</p>
+    <div class="divider" style="margin:16px 0;"></div>
+    <p class="lede"><b>(a)</b> It's turned into <b>citations</b> (title, timestamp, deep-link) and streamed back to your screen <b>immediately</b> — before the model has written a single word. That's why source cards can pop up first.</p>
+    <p class="lede" style="margin-top:12px;"><b>(b)</b> It's numbered <code class="inline">[1] [2] [3]…</code> and glued <b>in front of your question</b> to make one big "user" message. This fat packet is what the model will read.</p>
+    <div class="codecap">buildAnswerMessages() output — the single user message</div>
+<pre><span class="c">// role: "user", content: ⌄</span>
+<span class="n">Evidence:</span>
+
+<span class="n">[1]</span> How To Price Your Offer <span class="c">(at 3:42)</span>
+Charge more than you're comfortable with. The number that
+makes you slightly nauseous is usually the right one...
+
+<span class="n">[2]</span> Value Equation <span class="c">(at 12:08)</span>
+Price is a signal. When you charge more, people assume the
+thing is worth more, and they use it more...
+
+<span class="c">… [3] [4] [5] …</span>
+
+<span class="n">Question:</span> What does Hormozi say about pricing?</pre>
+  </div>
+
+  <div class="aha">
+    <div class="bulb">💡</div>
+    <p><b>Transformation #1:</b> your 6-word question just became a ~500-word packet. You never see this. The model <b>never</b> sees your bare question alone — it always sees quotes-then-question. This is <b>why the model can't make things up</b>: the only facts in front of it are the quotes we chose.</p>
+  </div>
+
+  <div class="arrow">▼ &nbsp; history (empty) &nbsp;<span>+</span>&nbsp; the fat packet &nbsp; → &nbsp; the model</div>
+
+  <!-- Stage 4 -->
+  <div class="stage model">
+    <div class="stage-head">
+      <span class="step-chip">STEP 4</span>
+      <h3>What the model actually receives</h3>
+      <span class="where">nexusAgent.stream(turn)</span>
+    </div>
+    <p class="lede">The model gets a <b>system prompt</b> (its permanent rulebook) plus the turn. The rulebook says, in short: <i>answer ONLY from the Evidence; if the quotes don't cover it, refuse; cite with [n]; never invent a number.</i></p>
+    <div class="codecap">the full thing handed to the model</div>
+<pre><span class="m">system:</span>  <span class="c">You are Nexus. Answer ONLY from the provided Evidence.</span>
+         <span class="c">If it doesn't cover the exact question, refuse. Cite [n]…</span>
+
+<span class="m">user:</span>    <span class="c">Evidence:</span>
+         <span class="c">[1] How To Price Your Offer … [2] Value Equation …</span>
+         <span class="c">Question: What does Hormozi say about pricing?</span></pre>
+    <p class="lede" style="margin-top:14px;">On turn 1 there's no prior conversation, so it's just system + this one user turn.</p>
+  </div>
+
+  <div class="arrow">▼ &nbsp; model writes, streaming word by word</div>
+
+  <!-- Stage 5 -->
+  <div class="stage model">
+    <div class="stage-head">
+      <span class="step-chip">STEP 5</span>
+      <h3>What the model gives back</h3>
+      <span class="where">textStream → route → your screen</span>
+    </div>
+    <p class="lede">Plain text with little footnote markers. The <code class="inline">[1]</code> and <code class="inline">[2]</code> point at evidence entry 1 and 2 — which are the exact same numbers as the citations we already streamed in step 3. That's how a footnote becomes a clickable link to the right video timestamp.</p>
+    <div class="codecap">model output (streamed token by token)</div>
+<pre>Hormozi says to charge more than you're comfortable with — the
+price that makes you slightly nauseous <span class="n">[1]</span>. He also frames price
+as a signal: charging more makes people value the thing more <span class="n">[2]</span>.</pre>
+  </div>
+
+  <div class="arrow">▼ &nbsp; answer finished streaming &nbsp;<span>—</span>&nbsp; now file a clean copy</div>
+
+  <!-- Stage 6 -->
+  <div class="stage store">
+    <div class="stage-head">
+      <span class="step-chip">STEP 6</span>
+      <h3>persistTurn files a CLEAN copy</h3>
+      <span class="where">threads.ts · persistTurn()</span>
+    </div>
+    <p class="lede">Here's the twist most people miss. We do <b>not</b> save the fat packet. We save your <b>plain question</b> and the answer. The evidence quotes are thrown away from history (they were just scaffolding for this one turn). The citations ride along as a side-part so the <code class="inline">[n]</code> links still work after a page reload.</p>
+  </div>
+
+  <div class="aha">
+    <div class="bulb">💡</div>
+    <p><b>Transformation #2 (the mirror image):</b> going <i>into</i> the model the message got fatter (+evidence). Going <i>into storage</i> it gets thinner again (−evidence). Storage always holds the clean human conversation; the model always sees the evidence-stuffed version. <b>Same turn, two different shapes.</b></p>
+  </div>
+
+  <div class="compare">
+    <div class="view model">
+      <div class="vhead">🟢 What the MODEL saw (fat)</div>
+<pre>Evidence:
+[1] How To Price… charge more…
+[2] Value Equation… price is a signal…
+[3] [4] [5] …
+Question: What does Hormozi
+say about pricing?</pre>
+    </div>
+    <div class="view store">
+      <div class="vhead">🟠 What the STORE keeps (clean)</div>
+<pre>user:      What does Hormozi say
+           about pricing?
+
+assistant: Hormozi says to charge
+           more… [1] … signal [2].
+           + citations (side-part)</pre>
+    </div>
+  </div>
+
+  <!-- ================= TURN 2 ================= -->
+  <div class="turn-band">
+    <span class="num">TURN 2</span>
+    <h2>A follow-up — where memory earns its keep</h2>
+  </div>
+  <p class="sub" style="font-size:16px; margin-top:6px;">You type: <code class="inline">What about the second one?</code></p>
+
+  <div class="stage user">
+    <div class="stage-head">
+      <span class="step-chip">STEP 1–2</span>
+      <h3>Same as before — but recall now returns something</h3>
+      <span class="where">route.ts · recallModelMessages</span>
+    </div>
+    <p class="lede">The browser again sends only <code class="inline">"What about the second one?"</code> + <code class="inline">threadId</code>. But this time recall pulls back the <b>clean</b> turn-1 pair from the store. Notice: it's the <b>plain</b> version — no evidence packet, just the human words.</p>
+    <div class="codecap">history = recallModelMessages(thread_xyz)</div>
+<pre>[
+  { <span class="k">role</span>: <span class="s">"user"</span>,      <span class="k">content</span>: <span class="s">"What does Hormozi say about pricing?"</span> },
+  { <span class="k">role</span>: <span class="s">"assistant"</span>, <span class="k">content</span>: <span class="s">"Hormozi says to charge more… [1] … signal [2]."</span> }
+]</pre>
+  </div>
+
+  <div class="arrow">▼ &nbsp; retrieval runs on the NEW question only &nbsp;<span>·</span>&nbsp; history rides alongside</div>
+
+  <div class="stage" style="--accent: var(--pink);">
+    <div class="stage-head">
+      <span class="step-chip">STEP 3–4</span>
+      <h3>The key rule: history for understanding, evidence for facts</h3>
+      <span class="where">ask.ts</span>
+    </div>
+    <p class="lede"><code class="inline">retrieve()</code> searches on <b>"What about the second one?"</b> alone — it does <b>not</b> mix in the old question. Fresh evidence is fetched and stapled on, exactly like turn 1. Then history is placed <b>in front</b> of the new fat packet, so the model can figure out what "the second one" means.</p>
+    <div class="codecap">what the model receives on turn 2</div>
+<pre><span class="m">system:</span>    <span class="c">…the rulebook…</span>
+<span class="m">user:</span>      What does Hormozi say about pricing?      <span class="c">← recalled</span>
+<span class="m">assistant:</span> Hormozi says to charge more… [1] … [2].   <span class="c">← recalled</span>
+<span class="m">user:</span>      Evidence:
+           [1] … fresh quotes for THIS question …
+           Question: What about the second one?      <span class="c">← new fat packet</span></pre>
+    <p class="lede" style="margin-top:14px;">So the model reads the history and understands "the second one" = the second idea from before (pricing as a signal), but it still <b>answers only from the fresh evidence</b> and cites <b>this turn's</b> numbers. History helps it <i>understand</i>; it never becomes a <i>source</i>.</p>
+  </div>
+
+  <div class="aha">
+    <div class="bulb">🔒</div>
+    <p><b>The load-bearing boundary:</b> history is context for <b>wording</b>, evidence is the only source for <b>facts</b>. That's why a follow-up can resolve "he / that / the second one" without the model ever being allowed to answer from something it merely remembers instead of something it can currently cite.</p>
+  </div>
+
+  <!-- ================= RECAP ================= -->
+  <div class="turn-band">
+    <span class="num">RECAP</span>
+    <h2>The five shapes of one message</h2>
+  </div>
+
+  <div class="recap">
+    <table>
+      <tr><th>Stop</th><th>Who</th><th>What the message looks like there</th></tr>
+      <tr>
+        <td>1 · leave</td>
+        <td><b>Browser</b></td>
+        <td><span class="muted">Just your newest sentence + a thread id. Tiny JSON. No history uploaded.</span></td>
+      </tr>
+      <tr>
+        <td>2 · arrive</td>
+        <td><b>Route</b></td>
+        <td><span class="muted">Unwrapped to a plain <code class="inline">query</code> string; a <code class="inline">userId</code> attached; past turns fetched from the store as <code class="inline">history</code>.</span></td>
+      </tr>
+      <tr>
+        <td>3 · fatten</td>
+        <td><b>ask()</b></td>
+        <td><span class="muted"><b>+ Evidence.</b> 5 quotes retrieved, numbered, glued in front of the question. Citations split off to the screen early.</span></td>
+      </tr>
+      <tr>
+        <td>4 · read</td>
+        <td><b>Model</b></td>
+        <td><span class="muted">Rulebook (system) + optional recalled turns + the fat evidence packet. Answers only from the quotes.</span></td>
+      </tr>
+      <tr>
+        <td>5 · return</td>
+        <td><b>Model → you</b></td>
+        <td><span class="muted">Plain text + <code class="inline">[n]</code> footnotes that line up with the citations from stop 3.</span></td>
+      </tr>
+      <tr>
+        <td>6 · file</td>
+        <td><b>Store</b></td>
+        <td><span class="muted"><b>− Evidence.</b> Only the clean question + answer (+ citations side-part) are saved — ready to be recalled next turn.</span></td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="eli5" style="margin-top:34px;">
+    <div class="emoji">🎯</div>
+    <div>
+      <h3>If you remember one thing</h3>
+      <p>The message wears <b>two outfits</b>. For the <b>model</b> it wears the fat "evidence + question" outfit so it can answer without inventing. For <b>memory</b> it wears the thin "just the human words" outfit so tomorrow's conversation stays clean. <code class="inline">ask()</code> dresses it up; <code class="inline">persistTurn()</code> dresses it back down. That two-outfit trick is the entire design.</p>
+    </div>
+  </div>
+
+  <footer>
+    Nexus · main chat message journey · generated from the real code paths in
+    <code class="inline">chat-conversation.tsx → route.ts → ask.ts → answer.ts → threads.ts</code>
+  </footer>
+
+</div>
+</body>
+</html>

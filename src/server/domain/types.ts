@@ -91,6 +91,8 @@ export type Evidence = {
 export type Filter = {
   sourceIds?: string[];
   kind?: SourceKind;
+  /** Scope retrieval to one creator's catalog (the Panel seam). Matches `source.creator_handle`. */
+  creatorHandle?: string;
 };
 
 /** What the user sees for one inline [n] marker. */
@@ -109,12 +111,28 @@ export type SourceCard = {
   url: string;
 };
 
+/** A prior turn fed to the model as conversational context — plain text only, never evidence. */
+export type HistoryMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 /** One message into the single entrypoint. */
 export type Ask = {
   query: string;
   channel: "web" | "discord" | "telegram";
   userId: string;
   threadId: string;
+  /** Scope the answer to one creator's catalog (a Panel column). Absent = the unscoped home chat. */
+  creatorHandle?: string;
+  /**
+   * Prior turns of this conversation, oldest→newest, so the model can resolve references like
+   * "the second one" across turns. Supplied by the caller: the main chat recalls it from the
+   * store (keyed by threadId), the Panel carries it up from the client (ephemeral). Absent =
+   * single-turn (the eval path). Grounding is unaffected — the answer is still built only from
+   * the current question's Evidence; history is context, never a source or a retrieval input.
+   */
+  history?: HistoryMessage[];
 };
 
 /** One streamed chunk out of `ask()` (locked contract). */

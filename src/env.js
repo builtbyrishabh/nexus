@@ -59,6 +59,12 @@ export const env = createEnv({
     TRANSCRIBE_FALLBACK: booleanFlag("false"),
     /** AssemblyAI key, direct — the AI Gateway does not route transcription. */
     ASSEMBLYAI_API_KEY: z.string().optional(),
+    /**
+     * Clerk secret key. Optional at build/typecheck time so a fresh checkout without Clerk
+     * keys still builds and tests; the authed web app cannot actually run without it. Clerk's
+     * own middleware/SDK reads this straight from `process.env` — this entry just documents it.
+     */
+    CLERK_SECRET_KEY: z.string().optional(),
   },
 
   /**
@@ -67,7 +73,8 @@ export const env = createEnv({
    * `NEXT_PUBLIC_`.
    */
   client: {
-    // NEXT_PUBLIC_CLIENTVAR: z.string(),
+    /** Clerk publishable key. Optional for the same reason as CLERK_SECRET_KEY above. */
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().optional(),
   },
 
   /**
@@ -86,7 +93,9 @@ export const env = createEnv({
     EVAL_MODEL: process.env.EVAL_MODEL,
     TRANSCRIBE_FALLBACK: process.env.TRANSCRIBE_FALLBACK,
     ASSEMBLYAI_API_KEY: process.env.ASSEMBLYAI_API_KEY,
-    // NEXT_PUBLIC_CLIENTVAR: process.env.NEXT_PUBLIC_CLIENTVAR,
+    CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
+      process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation. This is especially

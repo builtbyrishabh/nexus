@@ -3,4 +3,46 @@
 @theme {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+
+  /* Semantic theme tokens — one source of truth, resolved per color scheme below. */
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+}
+
+:root {
+  --canvas: #ffffff;
+  --surface: #f6f6f7;
+  --elevated: #ffffff;
+  --ink: #17171b;
+  --muted: #6b7280;
+  --line: rgba(17, 17, 27, 0.1);
+  --accent: #6366f1;
+  --accent-ink: #4f46e5;
+  --accent-soft: rgba(99, 102, 241, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #0b0b0f;
+    --surface: #141419;
+    --elevated: #1b1b22;
+    --ink: #ededf2;
+    --muted: #9aa0ac;
+    --line: rgba(255, 255, 255, 0.1);
+    --accent: #818cf8;
+    --accent-ink: #a5b4fc;
+    --accent-soft: rgba(129, 140, 248, 0.16);
+  }
+}
+
+html,
+body {
+  height: 100%;
 }
