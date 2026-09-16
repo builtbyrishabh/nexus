@@ -1,36 +1,31 @@
 /**
- * The creator roster — the one source of truth for who can be scoped, how their name is shown,
- * and who appears on the panel. Deliberately a code constant, not a `creator` table: Slice 4 only
- * needs a stable slug on `source` plus a display name, and the panel lineup is a product decision
- * we make here. When the community bot (#14) needs per-tenant config/tokens, this promotes to a
- * table then — cheaper to change later than to carry an unused table now (ETC).
+ * Creator display metadata — the *cosmetic* half of the roster, and the only half that lives in code.
  *
- * `handle` is the slug stored in `source.creator_handle` and used as the retrieval scope key.
- * `displayName` is what the UI labels a column with and what the neutral refusal names. We never
- * infer a pronoun from a name — the refusal says "their" (see `refusalText`).
+ * WHO exists and can be searched is no longer declared here: it's derived from what's actually been
+ * ingested (`distinct source.creator_handle`) by `~/server/domain/roster`. That makes ingestion the
+ * single source of truth — ingest a new creator and they become searchable with zero code change.
+ *
+ * This file only prettifies a handle into a name. Resolution order is override → channel author →
+ * the raw handle, so a newly ingested creator is already nameable (from its channel author); an
+ * override is a purely optional polish. We never infer a pronoun from a name (see `refusalText`).
  */
 export type Creator = {
   handle: string;
   displayName: string;
 };
 
-export const CREATORS: Creator[] = [
-  { handle: "hormozi", displayName: "Alex Hormozi" },
-  { handle: "naval", displayName: "Naval Ravikant" },
-  { handle: "codie", displayName: "Codie Sanchez" },
-];
+/**
+ * Optional curated names. Everything not listed here falls back to the channel author, then the raw
+ * handle — so this map is convenience, never a gate on who can be searched.
+ */
+const DISPLAY_NAME_OVERRIDES: Record<string, string> = {
+  hormozi: "Alex Hormozi",
+  naval: "Naval Ravikant",
+  codie: "Codie Sanchez",
+};
 
-/** The creators shown side by side on `/panel`, in order. Same list for now; its own name so the
- * lineup can diverge from the roster (e.g. an archived creator) without touching scope logic. */
-export const PANEL_LINEUP: readonly string[] = CREATORS.map((c) => c.handle);
-
-const BY_HANDLE = new Map(CREATORS.map((c) => [c.handle, c]));
-
-export function creatorByHandle(handle: string): Creator | undefined {
-  return BY_HANDLE.get(handle);
-}
-
-/** Display name for a handle, or undefined when unscoped (home chat / eval run across no creator). */
-export function displayNameFor(handle?: string): string | undefined {
-  return handle ? BY_HANDLE.get(handle)?.displayName : undefined;
+/** Display name for a handle: curated override → channel author → the raw handle. */
+export function displayNameFor(handle?: string, author?: string | null): string | undefined {
+  if (!handle) return undefined;
+  return DISPLAY_NAME_OVERRIDES[handle] ?? author ?? handle;
 }

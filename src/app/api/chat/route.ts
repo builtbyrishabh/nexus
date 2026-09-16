@@ -6,6 +6,8 @@ import {
 
 import { ask } from "~/server/ask";
 import { persistTurn, recallModelMessages } from "~/server/chat/threads";
+import { creatorNameMap, listCreators } from "~/server/domain/roster";
+import { unknownHandles } from "~/server/domain/scope";
 import type { Citation, HistoryMessage } from "~/server/domain/types";
 import type { NexusUIMessage } from "~/server/domain/ui";
 
@@ -54,6 +56,22 @@ export async function POST(req: Request) {
     ? textOfMessage(message)
     : textOfMessage(messages?.[messages.length - 1]);
 
+  // Server-owned scope. Collection = every creator actually ingested (derived from `source`, so a
+  // newly ingested creator is searchable with no code change; saved per-user interests come later).
+  // A Panel column pins one creator as the user's explicit selection; validate it against the
+  // collection here so an unknown/out-of-collection handle is rejected, never silently broadened.
+  const creators = await listCreators();
+  const collectionCreatorHandles = creators.map((c) => c.handle);
+  const creatorNames = creatorNameMap(creators);
+  let selectedCreatorHandles: string[] | undefined;
+  if (creatorHandle) {
+    const bad = unknownHandles([creatorHandle], collectionCreatorHandles);
+    if (bad.length > 0) {
+      return new Response(`Unknown creator: ${creatorHandle}`, { status: 400 });
+    }
+    selectedCreatorHandles = [creatorHandle];
+  }
+
   // Prior turns as plain context. Main chat: recall from the store (never trust the client with
   // history). Panel: the client owns the ephemeral transcript, so take all but the newest message.
   let history: HistoryMessage[] = [];
@@ -81,8 +99,11 @@ export async function POST(req: Request) {
         channel: "web",
         userId,
         threadId: threadId ?? `web:${userId}`,
-        creatorHandle, // absent on the main chat (unscoped); set per column on /panel
+        collectionCreatorHandles, // the searchable roster (server-owned, from ingested sources)
+        creatorNames, // handle → display name, for single-creator refusal wording
+        selectedCreatorHandles, // set per column on /panel; absent on the main chat
         history, // recalled (main chat) or client-supplied (panel); empty = single-turn
+        signal: req.signal, // client disconnect cancels generation
       })) {
         if (chunk.citations) {
           citations = chunk.citations;
