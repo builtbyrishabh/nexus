@@ -18,15 +18,6 @@ const ZERO_SCORES = {
   contextPrecision: 0,
 } as const;
 
-/** The creator a scoped case refuses as (single selection → their name), for the refusal check. */
-function caseCreatorName(
-  c: GoldenCase,
-  names: Record<string, string>,
-): string | undefined {
-  const handle = c.selected?.length === 1 ? c.selected[0] : undefined;
-  return handle ? names[handle] : undefined;
-}
-
 /**
  * Run one golden case through the REAL production path: `buildScopedRun` + `finalizeText` are the
  * exact orchestration `ask()` streams — same agent, same `searchCreatorCatalog` tool, same scope,
@@ -49,7 +40,6 @@ async function runCase(
     query: c.query,
     collectionCreatorHandles: c.collection ?? collection,
     creatorNames: names,
-    selectedCreatorHandles: c.selected,
     history: c.history,
     rerank,
   });
@@ -57,7 +47,7 @@ async function runCase(
   const answer = finalizeText(run.capture, text, names);
   const evidence = run.capture.evidence ?? [];
 
-  const refused = isRefusal(answer, caseCreatorName(c, names));
+  const refused = isRefusal(answer);
   const scores = c.expectRefusal
     ? undefined
     : refused

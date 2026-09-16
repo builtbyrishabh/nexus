@@ -63,9 +63,9 @@ const inputSchema = z.object({
  * The one retrieval tool the agent calls. It wraps the existing `retrieve()` pipeline (dense +
  * full-text → RRF → rerank → neighbors) behind the issue #20 scope contract:
  *
- *   - Server-owned scope (`collectionCreatorHandles`, `selectedCreatorHandles`) comes off the
- *     RequestContext; the model only supplies `query` + an optional `creatorHandles` narrowing.
- *     `resolveScope` decides the effective set (selection > agent choice > whole collection).
+ *   - Server-owned scope (`collectionCreatorHandles`) comes off the RequestContext; the model only
+ *     supplies `query` + an optional `creatorHandles` narrowing. `resolveScope` decides the effective
+ *     set (agent choice within the collection, else the whole collection).
  *   - Strict rerank (`rerank: true`) so a provider failure THROWS (an operational error) instead of
  *     silently dropping past the calibrated relevance floor and looking like "never covered".
  *   - Every non-ok outcome (empty collection, invalid scope, empty evidence) records itself in the
@@ -91,11 +91,8 @@ export const searchCreatorCatalog = createTool({
 
     const collection =
       (requestContext.getRaw("collectionCreatorHandles") as string[] | undefined) ?? [];
-    const selected = requestContext.getRaw("selectedCreatorHandles") as
-      | string[]
-      | undefined;
 
-    const scope = resolveScope({ collection, selected, agentChoice: creatorHandles });
+    const scope = resolveScope({ collection, agentChoice: creatorHandles });
     if (scope.kind === "empty_collection") {
       capture.outcome = "empty_collection";
       capture.evidence = [];

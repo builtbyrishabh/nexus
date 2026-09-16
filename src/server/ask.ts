@@ -90,24 +90,6 @@ function searchThenAnswer({ stepNumber }: { stepNumber: number }): {
 }
 
 /**
- * When the user fixed a single creator (a Panel column), lead the turn with a directive naming them
- * and their exact refusal sentence, so a model refusal is that creator's — mirroring the deterministic
- * refusal the app emits for empty evidence. Unscoped / whole-collection turns get no directive and the
- * neutral refusal voice. We never infer a pronoun from a name (see `refusalText`).
- */
-function currentTurn(input: Ask): ModelMessage {
-  const handle =
-    input.selectedCreatorHandles?.length === 1
-      ? input.selectedCreatorHandles[0]
-      : undefined;
-  const name = handle ? nameOf(input.creatorNames, handle) : undefined;
-  const directive = name
-    ? `You are answering about ${name}'s YouTube catalog. If the catalog does not address the exact thing asked, reply with exactly "${refusalText(name)}" and nothing else.\n\n`
-    : "";
-  return { role: "user", content: `${directive}${input.query}` };
-}
-
-/**
  * Assemble a scoped run: bounded history + the current turn as messages, server-owned scope + the
  * retrieval capture on the RequestContext, and the phase controls. `rerank` is left unset on the
  * product path (the tool defaults to strict), and set by the eval to A/B the reranker.
@@ -117,14 +99,14 @@ export function buildScopedRun(input: Ask & { rerank?: boolean }): ScopedRun {
 
   const requestContext = new RequestContext();
   requestContext.setRaw("collectionCreatorHandles", input.collectionCreatorHandles);
-  if (input.selectedCreatorHandles) {
-    requestContext.setRaw("selectedCreatorHandles", input.selectedCreatorHandles);
-  }
   requestContext.setRaw("capture", capture);
   if (input.rerank !== undefined) requestContext.setRaw("rerank", input.rerank);
 
   const history = (input.history ?? []).slice(-MAX_HISTORY_MESSAGES);
-  const messages: ModelMessage[] = [...history, currentTurn(input)];
+  const messages: ModelMessage[] = [
+    ...history,
+    { role: "user", content: input.query },
+  ];
 
   const controller = new AbortController();
   input.signal?.addEventListener("abort", () => controller.abort(), { once: true });

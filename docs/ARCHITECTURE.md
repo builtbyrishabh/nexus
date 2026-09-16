@@ -26,7 +26,7 @@ doesn't move an eval score, we delete it.
 | Layer | Choice | Why | Tag |
 |---|---|---|---|
 | Agent / RAG core | **Mastra** | Native RAG, tools, memory, agent loop, **built-in eval scorers** | 🟢 |
-| Delivery | **Next.js** web app + **Clerk** auth | One authenticated web surface; the streaming chat + Panel both reduce to `ask()` | 🟢 |
+| Delivery | **Next.js** web app + **Clerk** auth | One authenticated web surface; the streaming chat reduces to `ask()` | 🟢 |
 | Web UI | Next.js + AI SDK `useChat` | Streaming chat UI primitive | 🟢 |
 | Vector + keyword store | **Neon Postgres** (`pgvector` + `tsvector`) | Dense *and* sparse retrieval in one DB → hybrid with zero extra infra | 🟢 |
 | Embeddings | `text-embedding-3-small` | Cheap, strong default | 🟢 |
@@ -61,7 +61,7 @@ A RAG chatbot is **three sync jobs in one request** + **one async job offline**.
 - **One search per turn** (issue #20): the agent calls the `searchCreatorCatalog` tool exactly once,
   then answers only from that turn's Evidence — no re-retrieval loop.
 - **Citations stream before tokens** (a typed `data-citations` part), the token stream merges in.
-- Delivery is the web app only: the streaming chat and the Panel both reduce to the same `ask()`.
+- Delivery is the web app only: the streaming chat reduces to `ask()`.
 
 ---
 

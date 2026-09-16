@@ -31,10 +31,10 @@ first, derives a standalone search query (so a follow-up like "why does he recom
 on the resolved reference, not the raw words), and answers grounded + cited. `prepareStep` forces the
 tool in step 0 then disables tools for the answer step; the tool's own guard enforces exactly one
 retrieval execution. **Creator scope** is server-owned on the `RequestContext`
-(`collectionCreatorHandles` = the searchable roster, never model-supplied; `selectedCreatorHandles` =
-the user's explicit pick), and the agent may pass its own `creatorHandles` narrowing. `resolveScope`
-(`src/server/domain/scope.ts`) picks the effective set — **selection > agent choice > whole
-collection** — with distinct outcomes for empty collection and out-of-collection handles. The
+(`collectionCreatorHandles` = the searchable roster, never model-supplied), and the agent may pass its
+own `creatorHandles` narrowing. `resolveScope` (`src/server/domain/scope.ts`) picks the effective set
+— **agent choice within the collection, else the whole collection** — with distinct outcomes for
+empty collection and out-of-collection handles. The
 application, not the model, decides the final text for the non-answer branches (empty evidence →
 refusal, invalid scope → clarification), so a provider failure stays an operational error, never a
 false "never covered".
@@ -151,7 +151,7 @@ the 65-video build is a rerun of the same command.
 | **Evidence** | A retrieved+ranked Chunk the model reads | Chunk + `score, source{title,url}` |
 | **Citation** | What the user sees | `{ sourceTitle, url, startSec?, timestamp?, deepLink? }` |
 | **Answer** | The generated response | `{ text, citations[] }` |
-| **Ask** | One message into `ask()` | `{ query, collectionCreatorHandles, selectedCreatorHandles?, creatorNames?, history? }` |
+| **Ask** | One message into `ask()` | `{ query, collectionCreatorHandles, creatorNames?, history? }` |
 
 Naming rule: everything is named against these terms. No `doc`, `result`, `hit` synonyms.
 
@@ -274,15 +274,14 @@ to the model is numbered so marker index == evidence index == citation index.
 function ask(input: {
   query: string;
   collectionCreatorHandles: string[]; // server-owned searchable roster
-  selectedCreatorHandles?: string[];  // the user's explicit pick (a Panel column)
   creatorNames?: Record<string, string>; // handle -> display name, for refusal wording
   history?: HistoryMessage[];
   signal?: AbortSignal;
 }): AsyncIterable<{ textDelta?: string; citations?: Citation[] }>;
 ```
-Both web entry points — the saved chat (`useChat`) and each Panel column — reduce to `ask()`.
-Identity and persistence (`userId`, `threadId`) are resolved at the `/api/chat` boundary, not
-inside `ask()`. Citations stream as a `data-citations` part before the token stream.
+The web chat reduces to `ask()`. Identity and persistence (`userId`, `threadId`) are resolved at the
+`/api/chat` boundary, not inside `ask()`. Citations stream as a `data-citations` part before the token
+stream.
 
 ---
 
@@ -317,9 +316,9 @@ message + bounded history + server-owned scope
 - **Web:** Clerk session; `useChat` streams from the `/api/chat` route handler that validates the
   request, resolves `userId`/`threadId`, and calls `ask()`. Everything under the app shell is
   behind Clerk.
-- **Two request shapes, one path:** a saved chat sends `{ message, threadId }` (history recalled
-  server-side, turn persisted); a Panel column sends `{ messages, creatorHandle }` (ephemeral,
-  scoped to one creator). The route normalizes both before calling `ask()`.
+- **One request shape:** the client sends `{ message, threadId }` — only the newest user message;
+  prior turns are recalled server-side (never trusted from the client) and the turn is persisted.
+  `parseChatRequest` validates and normalizes it before `ask()`.
 
 ---
 

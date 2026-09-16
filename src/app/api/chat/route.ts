@@ -8,8 +8,7 @@ import { parseChatRequest } from "~/app/api/chat/request";
 import { ask } from "~/server/ask";
 import { persistTurn, recallModelMessages } from "~/server/chat/threads";
 import { creatorNameMap, listCreators } from "~/server/domain/roster";
-import { unknownHandles } from "~/server/domain/scope";
-import type { Citation, HistoryMessage } from "~/server/domain/types";
+import type { Citation } from "~/server/domain/types";
 import type { NexusUIMessage } from "~/server/domain/ui";
 
 export const runtime = "nodejs";
@@ -17,11 +16,10 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 /**
- * The single streaming query path. `parseChatRequest` validates and normalizes the body into one of
- * two explicit shapes — a saved chat (`{ message, threadId }`, history recalled server-side and the
- * turn persisted) or a Panel column (`{ messages, creatorHandle }`, client-owned ephemeral history,
- * nothing saved). Both reduce to `ask()` (grounded, cited; multi-turn context, single-turn
- * retrieval). Auth is required for either: everything under the app shell is behind Clerk.
+ * The single streaming query path. `parseChatRequest` validates the body into `{ message, threadId }`
+ * (only the newest user message; prior turns are recalled server-side, never trusted from the client)
+ * and the turn is persisted after it streams. Reduces to `ask()` (grounded, cited; multi-turn context,
+ * single-turn retrieval). Auth is required: everything under the app shell is behind Clerk.
  */
 export async function POST(req: Request) {
   const { userId } = await auth();
@@ -29,31 +27,16 @@ export async function POST(req: Request) {
 
   const parsed = parseChatRequest(await req.json().catch(() => null));
   if (!parsed.ok) return new Response(parsed.error, { status: 400 });
-  const request = parsed.request;
+  const { query, threadId, userMessageId } = parsed.request;
 
-  // Server-owned scope. Collection = every creator actually ingested (derived from `source`, so a
-  // newly ingested creator is searchable with no code change). A Panel column pins one creator as the
-  // user's explicit selection; validate it against the collection here so an unknown/out-of-collection
-  // handle is rejected, never silently broadened.
+  // Server-owned scope: the collection = every creator actually ingested (derived from `source`, so a
+  // newly ingested creator is searchable with no code change). The model can only narrow within it.
   const creators = await listCreators();
   const collectionCreatorHandles = creators.map((c) => c.handle);
   const creatorNames = creatorNameMap(creators);
 
-  let selectedCreatorHandles: string[] | undefined;
-  if (request.kind === "panel") {
-    const bad = unknownHandles([request.creatorHandle], collectionCreatorHandles);
-    if (bad.length > 0) {
-      return new Response(`Unknown creator: ${request.creatorHandle}`, { status: 400 });
-    }
-    selectedCreatorHandles = [request.creatorHandle];
-  }
-
-  // Prior turns as plain context. Saved chat: recall from the store (never trust the client with
-  // history). Panel: the client owns the ephemeral transcript, already normalized by the parser.
-  const history: HistoryMessage[] =
-    request.kind === "saved"
-      ? await recallModelMessages(request.threadId, userId)
-      : request.history;
+  // Prior turns as plain context, recalled from the store — the client is never trusted with history.
+  const history = await recallModelMessages(threadId, userId);
 
   const stream = createUIMessageStream<NexusUIMessage>({
     execute: async ({ writer }) => {
@@ -63,11 +46,10 @@ export async function POST(req: Request) {
       let citations: Citation[] = [];
 
       for await (const chunk of ask({
-        query: request.query,
+        query,
         collectionCreatorHandles, // the searchable roster (server-owned, from ingested sources)
         creatorNames, // handle → display name, for single-creator refusal wording
-        selectedCreatorHandles, // set per column on /panel; absent on the saved chat
-        history, // recalled (saved chat) or client-supplied (panel); empty = single-turn
+        history, // recalled from the store; empty = single-turn
         signal: req.signal, // client disconnect cancels generation
       })) {
         if (chunk.citations) {
@@ -90,21 +72,18 @@ export async function POST(req: Request) {
 
       if (textStarted) writer.write({ type: "text-end", id: textId });
 
-      // Persist only the saved-chat turn — the Panel is ephemeral. Best-effort: the answer has
-      // already streamed, so a store hiccup must never fail the response.
-      if (request.kind === "saved") {
-        try {
-          await persistTurn({
-            threadId: request.threadId,
-            userId,
-            question: request.query,
-            answer,
-            citations,
-            userMessageId: request.userMessageId,
-          });
-        } catch (err) {
-          console.error("[chat] failed to persist turn", err);
-        }
+      // Best-effort: the answer has already streamed, so a store hiccup must never fail the response.
+      try {
+        await persistTurn({
+          threadId,
+          userId,
+          question: query,
+          answer,
+          citations,
+          userMessageId,
+        });
+      } catch (err) {
+        console.error("[chat] failed to persist turn", err);
       }
     },
   });

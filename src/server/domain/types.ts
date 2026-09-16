@@ -124,12 +124,6 @@ export type Ask = {
    */
   collectionCreatorHandles: string[];
   /**
-   * The user's explicit creator selection (a Panel column pins one). Validated against the
-   * collection at the boundary. When present it overrides the agent's choice; when absent the
-   * agent may choose creators from the collection, or the whole collection is searched.
-   */
-  selectedCreatorHandles?: string[];
-  /**
    * handle → display name for the creators in scope, resolved at the request boundary (override →
    * channel author → handle). Lets the streaming path name a single-creator refusal without its own
    * DB lookup, keeping `ask()` free of a data-layer dependency.
@@ -137,10 +131,10 @@ export type Ask = {
   creatorNames?: Record<string, string>;
   /**
    * Prior turns of this conversation, oldest→newest, so the model can resolve references like
-   * "the second one" across turns. Supplied by the caller: the main chat recalls it from the
-   * store (keyed by threadId), the Panel carries it up from the client (ephemeral). Absent =
-   * single-turn (the eval path). History is context for the model's search query and answer, never
-   * itself Evidence — grounding stays on the Evidence the tool returns this turn.
+   * "the second one" across turns. Supplied by the caller: the web chat recalls it from the store
+   * (keyed by threadId). Absent = single-turn (the eval path). History is context for the model's
+   * search query and answer, never itself Evidence — grounding stays on the Evidence the tool
+   * returns this turn.
    */
   history?: HistoryMessage[];
   /** Client cancellation, propagated to the model call so a disconnect stops generation. */
