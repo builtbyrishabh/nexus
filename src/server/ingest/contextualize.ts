@@ -1,7 +1,7 @@
 import { generateText, gateway } from "ai";
+import pMap from "p-map";
 
 import { env } from "~/env";
-import { mapPool } from "~/server/util/pool";
 
 /**
  * Contextual Retrieval (Anthropic's technique). A raw transcript chunk, ripped out of its
@@ -54,7 +54,7 @@ export function contextualizeChunks(
   doc: ContextDocument,
   chunkTexts: string[],
 ): Promise<string[]> {
-  return mapPool(chunkTexts, CONCURRENCY, (text) =>
-    contextualizeOne(doc, text),
-  );
+  return pMap(chunkTexts, (text) => contextualizeOne(doc, text), {
+    concurrency: CONCURRENCY,
+  });
 }

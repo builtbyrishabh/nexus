@@ -108,13 +108,6 @@ export type Citation = {
   deepLink?: string; // https://youtu.be/<id>?t=724
 };
 
-/** A deduped source card (one per video). */
-export type SourceCard = {
-  sourceId: string;
-  title: string;
-  url: string;
-};
-
 /** A prior turn fed to the model as conversational context — plain text only, never evidence. */
 export type HistoryMessage = {
   role: "user" | "assistant";
@@ -124,9 +117,6 @@ export type HistoryMessage = {
 /** One message into the single entrypoint. */
 export type Ask = {
   query: string;
-  channel: "web" | "discord" | "telegram";
-  userId: string;
-  threadId: string;
   /**
    * The creators this request may search — server-owned, resolved at the request boundary, NEVER
    * supplied by the model. The agent can only narrow within this set; an empty set means no
@@ -161,5 +151,4 @@ export type Ask = {
 export type AskChunk = {
   textDelta?: string;
   citations?: Citation[];
-  sources?: SourceCard[];
 };

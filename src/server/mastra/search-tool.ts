@@ -4,6 +4,7 @@ import { z } from "zod";
 import { buildEvidencePacket } from "~/server/domain/citations";
 import { resolveScope } from "~/server/domain/scope";
 import type { Evidence } from "~/server/domain/types";
+import { RERANK_DEFAULT } from "~/server/retrieval/rerank";
 import { retrieve } from "~/server/retrieval/retrieve";
 
 /** How much evidence one answer reads. The one retrieval knob, shared across every caller. */
@@ -110,7 +111,8 @@ export const searchCreatorCatalog = createTool({
     capture.effectiveHandles = scope.handles;
 
     // A provider failure here throws → surfaces as an operational error upstream, never a refusal.
-    const rerank = (requestContext.getRaw("rerank") as boolean | undefined) ?? true;
+    const rerank =
+      (requestContext.getRaw("rerank") as boolean | undefined) ?? RERANK_DEFAULT;
     const evidence = await retrieve(query.slice(0, MAX_QUERY_LEN), {
       topK: ANSWER_TOP_K,
       rerank,

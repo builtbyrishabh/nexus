@@ -4,6 +4,7 @@ import {
   createUIMessageStreamResponse,
 } from "ai";
 
+import { parseChatRequest } from "~/app/api/chat/request";
 import { ask } from "~/server/ask";
 import { persistTurn, recallModelMessages } from "~/server/chat/threads";
 import { creatorNameMap, listCreators } from "~/server/domain/roster";
@@ -15,77 +16,44 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-/** The plain text of a UI message, concatenated from its text parts. */
-function textOfMessage(message: NexusUIMessage | undefined): string {
-  if (!message) return "";
-  return message.parts
-    .filter((p): p is { type: "text"; text: string } => p.type === "text")
-    .map((p) => p.text)
-    .join(" ")
-    .trim();
-}
-
 /**
- * The single streaming query path, shared by two callers, each supplying conversation history a
- * different way:
- *   - the main chat sends `{ message, threadId }` — only the newest user message; prior turns are
- *     recalled server-side from the store (keyed by threadId) — and its turn is persisted.
- *   - the Panel sends `{ messages, creatorHandle }` — the full per-column transcript, ephemeral
- *     and scoped to one creator; prior turns come straight off the request, nothing is saved.
- *
- * Both reduce to `ask()` (grounded, cited; multi-turn context, single-turn retrieval). Auth is
- * required for either: everything under the app shell is behind Clerk.
+ * The single streaming query path. `parseChatRequest` validates and normalizes the body into one of
+ * two explicit shapes — a saved chat (`{ message, threadId }`, history recalled server-side and the
+ * turn persisted) or a Panel column (`{ messages, creatorHandle }`, client-owned ephemeral history,
+ * nothing saved). Both reduce to `ask()` (grounded, cited; multi-turn context, single-turn
+ * retrieval). Auth is required for either: everything under the app shell is behind Clerk.
  */
 export async function POST(req: Request) {
   const { userId } = await auth();
   if (!userId) return new Response("Unauthorized", { status: 401 });
 
-  const {
-    message,
-    messages,
-    threadId,
-    creatorHandle,
-  }: {
-    message?: NexusUIMessage;
-    messages?: NexusUIMessage[];
-    threadId?: string;
-    creatorHandle?: string;
-  } = await req.json();
-
-  const query = message
-    ? textOfMessage(message)
-    : textOfMessage(messages?.[messages.length - 1]);
+  const parsed = parseChatRequest(await req.json().catch(() => null));
+  if (!parsed.ok) return new Response(parsed.error, { status: 400 });
+  const request = parsed.request;
 
   // Server-owned scope. Collection = every creator actually ingested (derived from `source`, so a
-  // newly ingested creator is searchable with no code change; saved per-user interests come later).
-  // A Panel column pins one creator as the user's explicit selection; validate it against the
-  // collection here so an unknown/out-of-collection handle is rejected, never silently broadened.
+  // newly ingested creator is searchable with no code change). A Panel column pins one creator as the
+  // user's explicit selection; validate it against the collection here so an unknown/out-of-collection
+  // handle is rejected, never silently broadened.
   const creators = await listCreators();
   const collectionCreatorHandles = creators.map((c) => c.handle);
   const creatorNames = creatorNameMap(creators);
+
   let selectedCreatorHandles: string[] | undefined;
-  if (creatorHandle) {
-    const bad = unknownHandles([creatorHandle], collectionCreatorHandles);
+  if (request.kind === "panel") {
+    const bad = unknownHandles([request.creatorHandle], collectionCreatorHandles);
     if (bad.length > 0) {
-      return new Response(`Unknown creator: ${creatorHandle}`, { status: 400 });
+      return new Response(`Unknown creator: ${request.creatorHandle}`, { status: 400 });
     }
-    selectedCreatorHandles = [creatorHandle];
+    selectedCreatorHandles = [request.creatorHandle];
   }
 
-  // Prior turns as plain context. Main chat: recall from the store (never trust the client with
-  // history). Panel: the client owns the ephemeral transcript, so take all but the newest message.
-  let history: HistoryMessage[] = [];
-  if (message && threadId) {
-    history = await recallModelMessages(threadId, userId);
-  } else if (messages && messages.length > 1) {
-    history = messages
-      .slice(0, -1)
-      .map((m) => ({
-        role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
-        content: textOfMessage(m),
-      }))
-      .filter((m) => m.content.length > 0);
-  }
+  // Prior turns as plain context. Saved chat: recall from the store (never trust the client with
+  // history). Panel: the client owns the ephemeral transcript, already normalized by the parser.
+  const history: HistoryMessage[] =
+    request.kind === "saved"
+      ? await recallModelMessages(request.threadId, userId)
+      : request.history;
 
   const stream = createUIMessageStream<NexusUIMessage>({
     execute: async ({ writer }) => {
@@ -95,22 +63,16 @@ export async function POST(req: Request) {
       let citations: Citation[] = [];
 
       for await (const chunk of ask({
-        query,
-        channel: "web",
-        userId,
-        threadId: threadId ?? `web:${userId}`,
+        query: request.query,
         collectionCreatorHandles, // the searchable roster (server-owned, from ingested sources)
         creatorNames, // handle → display name, for single-creator refusal wording
-        selectedCreatorHandles, // set per column on /panel; absent on the main chat
-        history, // recalled (main chat) or client-supplied (panel); empty = single-turn
+        selectedCreatorHandles, // set per column on /panel; absent on the saved chat
+        history, // recalled (saved chat) or client-supplied (panel); empty = single-turn
         signal: req.signal, // client disconnect cancels generation
       })) {
         if (chunk.citations) {
           citations = chunk.citations;
           writer.write({ type: "data-citations", data: chunk.citations });
-        }
-        if (chunk.sources) {
-          writer.write({ type: "data-sources", data: chunk.sources });
         }
         if (chunk.textDelta !== undefined) {
           if (!textStarted) {
@@ -128,17 +90,17 @@ export async function POST(req: Request) {
 
       if (textStarted) writer.write({ type: "text-end", id: textId });
 
-      // Persist only the threaded main-chat turn — the Panel is ephemeral. Best-effort: the answer
-      // has already streamed, so a store hiccup must never fail the response.
-      if (threadId && query) {
+      // Persist only the saved-chat turn — the Panel is ephemeral. Best-effort: the answer has
+      // already streamed, so a store hiccup must never fail the response.
+      if (request.kind === "saved") {
         try {
           await persistTurn({
-            threadId,
+            threadId: request.threadId,
             userId,
-            question: query,
+            question: request.query,
             answer,
             citations,
-            userMessageId: message?.id,
+            userMessageId: request.userMessageId,
           });
         } catch (err) {
           console.error("[chat] failed to persist turn", err);

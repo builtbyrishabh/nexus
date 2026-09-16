@@ -48,9 +48,6 @@ async function collect(gen: AsyncGenerator<AskChunk>): Promise<AskChunk[]> {
 
 const baseInput = {
   query: "q",
-  channel: "web" as const,
-  userId: "u",
-  threadId: "t",
   collectionCreatorHandles: ["hormozi"],
   // Resolved at the request boundary (override → author → handle); the route/eval supply this map.
   creatorNames: { hormozi: "Alex Hormozi", naval: "Naval Ravikant" },
@@ -70,7 +67,6 @@ describe("ask() orchestration", () => {
     return collect(ask({ ...baseInput })).then((chunks) => {
       // First chunk carries citations; the pre-search "PLANNING" delta is dropped.
       expect(chunks[0]!.citations).toHaveLength(1);
-      expect(chunks[0]!.sources).toHaveLength(1);
       const text = chunks
         .map((c) => c.textDelta ?? "")
         .join("");

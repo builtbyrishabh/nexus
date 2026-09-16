@@ -130,9 +130,9 @@ the 65-video build is a rerun of the same command.
 
 > **Nexus answers questions about a single YouTube creator's catalog, grounded strictly
 > in what they actually said, with every claim cited to the exact video + timestamp —
-> on web, Discord, and Telegram.**
+> in an authenticated web app.**
 
-- **In scope:** one channel's videos → grounded multi-turn Q&A + timestamped deep-links, on 3 surfaces.
+- **In scope:** one channel's videos → grounded multi-turn Q&A + timestamped deep-links, on the web.
 - **Out of scope (now):** books, multi-channel corpora, summaries/notes, anything not
   answerable from transcripts.
 - **The refusal is the product:** if the corpus doesn't cover it, Nexus says
@@ -150,8 +150,8 @@ the 65-video build is a rerun of the same command.
 | **Locator** | *Where in the source* → powers deep-links | `{ startSec, endSec }` |
 | **Evidence** | A retrieved+ranked Chunk the model reads | Chunk + `score, source{title,url}` |
 | **Citation** | What the user sees | `{ sourceTitle, url, startSec?, timestamp?, deepLink? }` |
-| **Answer** | The generated response | `{ text, citations[], sources[], trace? }` |
-| **Ask** | One message in a Conversation | `{ query, channel, userId, threadId }` |
+| **Answer** | The generated response | `{ text, citations[] }` |
+| **Ask** | One message into `ask()` | `{ query, collectionCreatorHandles, selectedCreatorHandles?, creatorNames?, history? }` |
 
 Naming rule: everything is named against these terms. No `doc`, `result`, `hit` synonyms.
 
@@ -263,28 +263,26 @@ type Citation = {
   timestamp?: string;   // "12:04"
   deepLink?: string;    // https://youtu.be/<id>?t=724
 };
-type SourceCard = { sourceId: string; title: string; url: string };
-type Answer = { text: string; citations: Citation[]; sources: SourceCard[]; trace?: AnswerTrace };
+type Answer = { text: string; citations: Citation[] };
 ```
 Contract: the model writes prose with inline `[1]`, `[2]` markers; each index maps 1:1 to
 `citations[i]`. UI renders markers as clickable `[mm:ss]` deep-links. Evidence packet given
 to the model is numbered so marker index == evidence index == citation index.
 
-### d) The one entrypoint every surface calls
+### d) The one entrypoint the web app calls
 ```ts
 function ask(input: {
   query: string;
-  channel: "web" | "discord" | "telegram";
-  userId: string;
-  threadId: string;
   collectionCreatorHandles: string[]; // server-owned searchable roster
   selectedCreatorHandles?: string[];  // the user's explicit pick (a Panel column)
+  creatorNames?: Record<string, string>; // handle -> display name, for refusal wording
   history?: HistoryMessage[];
   signal?: AbortSignal;
-}): AsyncIterable<{ textDelta?: string; citations?: Citation[]; sources?: SourceCard[] }>;
+}): AsyncIterable<{ textDelta?: string; citations?: Citation[] }>;
 ```
-Web (`useChat`), Discord, and Telegram all reduce to `ask()`. Citations stream as a
-`source`/data part before the token stream. This is how "one codebase, three surfaces" holds.
+Both web entry points — the saved chat (`useChat`) and each Panel column — reduce to `ask()`.
+Identity and persistence (`userId`, `threadId`) are resolved at the `/api/chat` boundary, not
+inside `ask()`. Citations stream as a `data-citations` part before the token stream.
 
 ---
 
@@ -309,18 +307,19 @@ message + bounded history + server-owned scope
         -> agent answers grounded with inline [n] markers  (step 1, tools disabled)
            OR the app returns the honest non-answer (refusal / clarification)
         -> stream citations first, then textDelta
-        -> render per surface (web parts / Discord / Telegram)
+        -> render in the web UI (data-citations part + streamed text)
 ```
 
 ---
 
-## 6. Delivery & auth (surface contract)
+## 6. Delivery & auth (web contract)
 
-- **Web:** Clerk session; `useChat` streams from a route handler that calls `ask()`.
-- **Discord / Telegram:** Mastra Channels + Chat SDK adapters; platform authenticates the
-  user (stable `platformUserId`) — no login flow. `userId = "<channel>:<platformUserId>"`.
-- **Account linking (optional, later):** `/link` in a bot -> one-time Clerk link -> map
-  `(clerkUserId <-> platformUserId)` for entitlements/history. Not needed for Tier 1.
+- **Web:** Clerk session; `useChat` streams from the `/api/chat` route handler that validates the
+  request, resolves `userId`/`threadId`, and calls `ask()`. Everything under the app shell is
+  behind Clerk.
+- **Two request shapes, one path:** a saved chat sends `{ message, threadId }` (history recalled
+  server-side, turn persisted); a Panel column sends `{ messages, creatorHandle }` (ephemeral,
+  scoped to one creator). The route normalizes both before calling `ask()`.
 
 ---
 

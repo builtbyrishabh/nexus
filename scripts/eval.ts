@@ -5,7 +5,7 @@ import { AXES, type CaseResult, type EvalSummary } from "~/server/evals/summary"
 
 /**
  * Run the golden-set evals. Modes:
- *   pnpm eval              → the product default (RERANK_ENABLED), gates via exit code
+ *   pnpm eval              → the product default (RERANK_DEFAULT), gates via exit code
  *   pnpm eval --rerank     → rerank on, gates via exit code
  *   pnpm eval --no-rerank  → rerank off, gates via exit code
  *   pnpm eval --compare    → run off and on, print the rerank lift (informational; always exits 0)

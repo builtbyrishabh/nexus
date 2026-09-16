@@ -100,20 +100,40 @@ export async function loadThreadMessages(
 }
 
 /**
+ * How many recent stored messages to pull for cross-turn context. The model only needs the last few
+ * turns to resolve references ("the second one"), so we bound the recall instead of reading the whole
+ * thread; `ask()` slices again defensively.
+ */
+const RECENT_MESSAGE_LIMIT = 20;
+
+/**
  * The thread's prior turns as plain model messages (text only), oldest→newest, ready to prepend to
- * the current turn for conversational recall. Because we only ever store the plain question + answer
- * (no evidence), this is exactly the clean context the model should see — the current turn's Evidence
- * packet is added separately by `ask()`. Empty for a fresh or unknown thread.
+ * the current turn for conversational recall. Reads the stored message parts directly — no detour
+ * through the UI-message shape the sidebar needs — and pulls only the recent window. Because we only
+ * ever store the plain question + answer (no evidence), this is exactly the clean context the model
+ * should see; the current turn's Evidence packet is added separately by `ask()`. Empty for a fresh or
+ * unknown thread.
  */
 export async function recallModelMessages(
   threadId: string,
   userId: string,
 ): Promise<{ role: "user" | "assistant"; content: string }[]> {
-  const ui = await loadThreadMessages(threadId, userId);
-  return ui
+  const thread = await assertOwnership(threadId, userId);
+  if (!thread) return [];
+  const { messages } = await getNexusMemory().recall({
+    threadId,
+    resourceId: userId,
+    perPage: RECENT_MESSAGE_LIMIT,
+    orderBy: { field: "createdAt", direction: "DESC" },
+    includeTotal: false,
+  });
+  // Bounded recall comes back newest-first; flip to oldest→newest for the model.
+  return messages
+    .reverse()
+    .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m) => ({
       role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
-      content: m.parts
+      content: m.content.parts
         .filter((p): p is { type: "text"; text: string } => p.type === "text")
         .map((p) => p.text)
         .join(""),

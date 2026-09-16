@@ -146,8 +146,8 @@ export function buildScopedRun(input: Ask & { rerank?: boolean }): ScopedRun {
  * The one entrypoint every surface calls. The agent searches once (the `searchCreatorCatalog` tool),
  * then answers grounded + cited — or the application returns the honest non-answer.
  *
- * Streaming contract, unchanged from the caller's view: citations/sources are emitted BEFORE any
- * answer text. We read them off the tool result (the exact Evidence the model was shown, numbered the
+ * Streaming contract, unchanged from the caller's view: citations are emitted BEFORE any answer
+ * text. We read them off the tool result (the exact Evidence the model was shown, numbered the
  * same), so `[n]` deep-links line up. Planning text can never leak as the answer: text is forwarded
  * only after an `ok` search. A non-ok outcome emits the deterministic text and stops; a tool/provider
  * error throws (operational), never a silent refusal.
@@ -169,8 +169,7 @@ export async function* ask(input: Ask): AsyncGenerator<AskChunk> {
       chunk.type === "tool-result" &&
       chunk.payload.toolName === "searchCreatorCatalog"
     ) {
-      const { citations, sources } = evidenceToCitations(capture.evidence ?? []);
-      yield { citations, sources };
+      yield { citations: evidenceToCitations(capture.evidence ?? []) };
       citationsEmitted = true;
 
       if (capture.outcome !== "ok") {
@@ -190,7 +189,7 @@ export async function* ask(input: Ask): AsyncGenerator<AskChunk> {
   // Defensive: the model somehow answered without searching (impossible under toolChoice "required").
   // Never let that become an uncited factual answer.
   if (!citationsEmitted) {
-    yield { citations: [], sources: [] };
+    yield { citations: [] };
     yield { textDelta: refusalText() };
   }
 }

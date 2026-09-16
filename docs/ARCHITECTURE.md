@@ -1,10 +1,10 @@
 # Nexus — YouTube Channel RAG Chatbot
 
 > Chat with an entire YouTube creator's catalog. Grounded, cited-to-the-second answers,
-> delivered on web + Discord + Telegram from one codebase.
+> delivered as an authenticated web app.
 
 A portfolio-grade, production-shaped RAG system. The goal is **real work, not a prototype**:
-smart retrieval, real evals, multi-channel delivery.
+smart retrieval, real evals, a grounded web chat.
 
 ---
 
@@ -26,16 +26,16 @@ doesn't move an eval score, we delete it.
 | Layer | Choice | Why | Tag |
 |---|---|---|---|
 | Agent / RAG core | **Mastra** | Native RAG, tools, memory, agent loop, **built-in eval scorers** | 🟢 |
-| Delivery | **Vercel Chat SDK** adapters via **Mastra Channels** | Web + Discord + Telegram, one codebase; officially interoperable with Mastra | 🟢 |
+| Delivery | **Next.js** web app + **Clerk** auth | One authenticated web surface; the streaming chat + Panel both reduce to `ask()` | 🟢 |
 | Web UI | Next.js + AI SDK `useChat` | Streaming chat UI primitive | 🟢 |
 | Vector + keyword store | **Neon Postgres** (`pgvector` + `tsvector`) | Dense *and* sparse retrieval in one DB → hybrid with zero extra infra | 🟢 |
 | Embeddings | `text-embedding-3-small` | Cheap, strong default | 🟢 |
 | Rerank + generation | via **AI Gateway** | One endpoint for both; easy provider swaps | 🟢 |
 | Transcript ingest | `youtubei.js` discovery + `youtube-transcript` + AssemblyAI fallback | STT (via AI SDK `transcribe()`) only when no caption track exists | 🟡 |
 
-**Why Mastra + Chat SDK and not one or the other:** Mastra Channels (`@mastra/core` ≥ 1.22)
-accepts Chat SDK adapters directly on the `Agent` constructor. Mastra is the brain
-(RAG + evals + agent loop); Chat SDK is the channels. No custom bridge code.
+**Why Mastra behind a plain Next.js app:** Mastra is the brain (RAG + tools + memory + evals +
+agent loop); Next.js is the delivery surface. The `/api/chat` route streams `ask()` over the AI
+SDK's `useChat` transport, so there's no custom bridge code between the agent and the UI.
 
 ---
 
@@ -51,17 +51,17 @@ A RAG chatbot is **three sync jobs in one request** + **one async job offline**.
                     └───────────────────────────────────────────────────────────────────┘
 
                     ┌─────────────────── QUERY PATH (sync, one request) ───────────────┐
-  user message  →  rewrite query  →  hybrid retrieve  →  RRF fuse  →  rerank  →  generate + stream
-  (web/Discord/     (standalone       (dense top-20 +     (k=60,      (→ top-3)   (grounded, cited
-   Telegram)         from history)     BM25 top-20)        → top-10)               [mm:ss] deep-links)
+  user message  →  search (one tool call)  →  hybrid retrieve  →  RRF fuse  →  rerank  →  generate + stream
+  (web)            (agent, once per turn)     (dense top-20 +     (k=60)      (→ top-5)   (grounded, cited
+                                              BM25 top-20)                                [mm:ss] deep-links)
                     └───────────────────────────────────────────────────────────────────┘
-                         ▲                                                    │
-                         └──────── agent may re-retrieve (cap 4–6) ◀──────────┘
 ```
 
 - **Ingestion is async**; the query path never waits on it.
-- **Citations stream before tokens** (AI SDK `source` parts), token stream merges in.
-- Delivery is channel-agnostic: the same agent handler answers on every platform.
+- **One search per turn** (issue #20): the agent calls the `searchCreatorCatalog` tool exactly once,
+  then answers only from that turn's Evidence — no re-retrieval loop.
+- **Citations stream before tokens** (a typed `data-citations` part), the token stream merges in.
+- Delivery is the web app only: the streaming chat and the Panel both reduce to the same `ask()`.
 
 ---
 
@@ -69,6 +69,11 @@ A RAG chatbot is **three sync jobs in one request** + **one async job offline**.
 
 Build in order. **Do not advance a tier until its evals pass.** The tiered lift —
 measured, not asserted — is the portfolio story.
+
+> **Status.** Tier 1 ships. From Tier 2, conversational context (multi-turn recall) and
+> **retrieval-as-a-tool** ship — but the tool runs **one search per turn**, not a re-retrieval loop.
+> Everything else below (sub-query decomposition, the reflection loop, semantic cache, guardrails)
+> is roadmap, not built.
 
 ### Tier 1 — Production baseline (table stakes)
 
@@ -89,18 +94,18 @@ measured, not asserted — is the portfolio story.
 
 | Component | How | Tag |
 |---|---|---|
-| Conversational query rewrite | Multi-turn message → standalone search query | 🟢 *(Mastra agent step)* |
-| Retrieval as a tool | Agent decides when/what to retrieve; **cap 4–6 retrieves/turn** + "enough" signal | 🟢 |
-| Sub-query decomposition | Split multi-hop questions ("early vs recent videos") into sub-queries | 🟡 *only fires on multi-hop; recall lift* |
+| Conversational context | Prior turns fed to the model so it resolves references ("the second one") | 🟢 *(shipped; generation-only, never a retrieval input)* |
+| Retrieval as a tool | Agent decides what to search within server-owned scope; **one search per turn** | 🟢 *(shipped, issue #20/#21)* |
+| Sub-query decomposition | Split multi-hop questions ("early vs recent videos") into sub-queries | ⚪ *roadmap — not built* |
 
 ### Tier 3 — Frontier polish (cheap, high-signal — do selectively)
 
 | Component | How | Tag |
 |---|---|---|
-| Reflection loop | retrieve → critique → refine, **gated on low confidence / failed faithfulness** | 🟡 *3–10× tokens; gate it or skip it* |
-| Semantic cache | cache answers for near-duplicate questions | 🟢 |
-| Guardrails | prompt-injection check in, PII/off-topic check out | 🟢 |
-| Observability | surface Mastra traces ("why this chunk was retrieved") | 🟢 |
+| Reflection loop | retrieve → critique → refine, **gated on low confidence / failed faithfulness** | ⚪ *roadmap — would add a second retrieval; not built* |
+| Semantic cache | cache answers for near-duplicate questions | ⚪ *roadmap — not built* |
+| Guardrails | prompt-injection check in, PII/off-topic check out | ⚪ *roadmap — not built* |
+| Observability | surface Mastra traces ("why this chunk was retrieved") | ⚪ *roadmap — not built* |
 
 ---
 
@@ -112,9 +117,9 @@ measured, not asserted — is the portfolio story.
 | Chunk context blurb | 50–100 tokens, cheap model, prompt-cached |
 | Dense retrieve | pgvector cosine, top-20, HNSW index |
 | Sparse retrieve | Postgres `tsvector`/BM25, top-20 |
-| Fusion | RRF, k=60 → top-10 |
-| Rerank | → top-3 |
-| Agentic retrieves/turn | cap 4–6 |
+| Fusion | RRF, k=60 |
+| Rerank | → top-5 (the one `ANSWER_TOP_K`) |
+| Retrieval | one search per turn |
 | Eval axes | Faithfulness · Answer Relevancy · Context Precision |
 
 ---
@@ -126,11 +131,11 @@ To keep "as little glue as possible" honest, the **only** custom code we own is:
 1. **Transcript → timestamped chunks** (ingestion) — needed for second-accurate citations.
 2. **Contextual Retrieval blurb generation** — needed for the −49% lift.
 3. **The hybrid+RRF retrieval tool** — ~30 lines: two SQL queries + rank fusion.
-4. **Sub-query decomposition / reflection gates** — small, and only in Tiers 2–3.
+4. **The scope + phase control around `ask()`** — server-owned creator scope and the
+   search-then-answer step control that keeps retrieval to one search per turn.
 
-Everything else — agent loop, memory, streaming, channel adapters, eval scorers, web UI —
-is **library-native**. If a future addition isn't on this list and doesn't move an eval
-number, it doesn't ship.
+Everything else — agent loop, memory, streaming, eval scorers, web UI — is **library-native**.
+If a future addition isn't on this list and doesn't move an eval number, it doesn't ship.
 
 ---
 
@@ -146,6 +151,5 @@ number, it doesn't ship.
 
 - [Vercel — Production RAG architecture](https://vercel.com/kb/guide/rag-chatbot-production-architecture-on-vercel)
 - [Anthropic — Contextual Retrieval](https://www.anthropic.com/engineering/contextual-retrieval)
-- [Mastra — RAG overview](https://mastra.ai/guides/rag/overview) · [built-in scorers](https://mastra.ai/docs/evals/built-in-scorers) · [Channels](https://mastra.ai/blog/introducing-channels)
-- [Mastra + Chat SDK](https://vercel.com/i/mastra-chat-sdk) · [Chat SDK docs](https://chat-sdk.dev/docs)
+- [Mastra — RAG overview](https://mastra.ai/guides/rag/overview) · [built-in scorers](https://mastra.ai/docs/evals/built-in-scorers)
 - [Vercel AI SDK RAG starter](https://github.com/vercel/ai-sdk-rag-starter)
