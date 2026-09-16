@@ -210,7 +210,7 @@ git commit -m "refactor(chat): use native Mastra memory"
 
 **Interfaces:**
 - Consumes: `mastra`, `nexusMemory`, and `NEXUS_MAX_STEPS` from Task 2; Clerk's authenticated `userId`; AI SDK v7 `UIMessage`.
-- Produces: `parseChatRequest(input): Promise<{ threadId: string; message: NexusUIMessage }>`, `assertThreadOwner(threadId, userId)`, native thread loading, and the POST streaming route.
+- Produces: `parseChatRequest(input): Promise<{ threadId: string; message: UIMessage }>`, `assertThreadOwner(threadId, userId)`, native thread loading, and the POST streaming route.
 
 - [ ] **Step 1: Write the failing request-boundary tests**
 
@@ -226,7 +226,7 @@ The parser should return:
 ```ts
 {
   threadId: string;
-  message: NexusUIMessage;
+  message: UIMessage;
 }
 ```
 
@@ -289,7 +289,7 @@ The route should contain only these responsibilities:
 Use this parameter shape:
 
 ```ts
-const stream = await handleChatStream<NexusUIMessage>({
+const stream = await handleChatStream<UIMessage>({
   mastra,
   agentId: "nexus",
   version: "v7",
@@ -324,7 +324,7 @@ git commit -m "refactor(chat): delegate streaming to Mastra"
 ### Task 4: Render citations from native tool parts
 
 **Files:**
-- Modify: `src/server/domain/ui.ts`
+- Delete: `src/server/domain/ui.ts`
 - Modify: `src/app/_components/answer.tsx`
 - Create: `src/app/_components/answer.test.tsx`
 - Modify: `src/app/_components/chat-conversation.tsx`
@@ -354,12 +354,10 @@ Expected: FAIL because the current UI consumes custom `data-citations` parts and
 
 - [ ] **Step 2: Represent the native UI message**
 
-In `src/server/domain/ui.ts`, define `NexusUIMessage` as the AI SDK v7 `UIMessage`. Keep the native message-part union intact and validate completed `searchCreatorCatalog` outputs with `catalogSearchResultSchema` at the render boundary:
+Delete `src/server/domain/ui.ts` and import AI SDK's `UIMessage` directly wherever the app needs the native message type:
 
 ```ts
 import type { UIMessage } from "ai";
-
-export type NexusUIMessage = UIMessage;
 ```
 
 Do not introduce a duplicate hand-maintained union for every AI SDK part state.
@@ -370,7 +368,7 @@ Replace `citationsOf(message)` with:
 
 ```ts
 export function citationRegistry(
-  messages: NexusUIMessage[],
+  messages: UIMessage[],
 ): ReadonlyMap<string, CatalogEvidence>
 ```
 
