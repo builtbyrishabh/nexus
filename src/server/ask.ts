@@ -1,92 +1,184 @@
+import { RequestContext } from "@mastra/core/request-context";
 import type { ModelMessage } from "ai";
 
-import { buildAnswerMessages, refusalText } from "~/server/answer";
+import { refusalText } from "~/server/answer";
 import { evidenceToCitations } from "~/server/domain/citations";
 import { displayNameFor } from "~/server/domain/creators";
-import type { Ask, AskChunk, Evidence } from "~/server/domain/types";
+import type { Ask, AskChunk } from "~/server/domain/types";
 import { nexusAgent } from "~/server/mastra";
-import { retrieve } from "~/server/retrieval/retrieve";
+import type { SearchCapture } from "~/server/mastra/search-tool";
 
-/** How much evidence the answer reads. One knob, shared by every caller of the query path. */
-const ANSWER_TOP_K = 5;
-
-export type AnswerOptions = {
-  rerank?: boolean;
-  /** Scope to one creator's catalog (a Panel column). Absent = unscoped across the whole corpus. */
-  creatorHandle?: string;
-};
+/** Keep the model's cross-turn context bounded — the last few turns resolve references; older ones don't. */
+const MAX_HISTORY_MESSAGES = 10;
+/** Two model steps: one to search, one to answer. The tool guards the single retrieval execution. */
+const MAX_STEPS = 2;
 
 /**
- * The non-streaming front half of the query path: retrieve, then decide between the refusal and
- * a grounded generation. `messages` is absent exactly when there is nothing to ground on, so the
- * caller emits the refusal (`refusalText(creatorName)`) instead of calling the model.
- *
- * This is the ONE place the query path is defined. `ask()` finishes it by streaming; the eval
- * harness finishes it with a blocking generate. Anything Tier 2 adds here (query rewrite, agentic
- * retrieval) is therefore measured by the eval the moment it ships — there is no second copy to
- * keep in sync. `rerank` passes straight through to `retrieve()` so the eval can A/B it.
+ * A scoped run of the agentic query path, ready for either finish: `ask()` streams it,
+ * the eval blocks with `generate`. Both build it here so they exercise the SAME orchestration —
+ * same agent, same tool, same phase control, same scope on the RequestContext — and the eval grades
+ * exactly what ships. `capture` is the shared handle the tool fills and the caller reads back.
  */
-export async function prepareAnswer(
-  query: string,
-  opts?: AnswerOptions,
-): Promise<{
-  evidence: Evidence[];
-  messages?: ReturnType<typeof buildAnswerMessages>;
-  /** The creator this answer is scoped to (undefined when unscoped). Drives the refusal wording. */
-  creatorName?: string;
-}> {
-  const creatorHandle = opts?.creatorHandle;
-  const creatorName = displayNameFor(creatorHandle);
-  const evidence = await retrieve(query, {
-    topK: ANSWER_TOP_K,
-    rerank: opts?.rerank,
-    filter: creatorHandle ? { creatorHandle } : undefined,
-  });
+export type ScopedRun = {
+  messages: ModelMessage[];
+  capture: SearchCapture;
+  options: {
+    requestContext: RequestContext;
+    maxSteps: number;
+    prepareStep: (args: { stepNumber: number }) => {
+      toolChoice: "required" | "none";
+      activeTools: string[];
+    };
+    abortSignal: AbortSignal;
+  };
+  controller: AbortController;
+};
+
+/** The creator this scope refuses as: a single effective creator → their name, else neutral. */
+function effectiveCreatorName(capture: SearchCapture): string | undefined {
+  return capture.effectiveHandles?.length === 1
+    ? displayNameFor(capture.effectiveHandles[0])
+    : undefined;
+}
+
+/** The honest clarification when the agent chose creators outside the collection. */
+function invalidScopeText(handles: string[]): string {
+  const names = handles.map((h) => displayNameFor(h) ?? h).join(", ");
+  return `I don't have ${names} in this collection, so I can't answer that.`;
+}
+
+/**
+ * The final answer text, decided by the APPLICATION, not the model, for every non-answer branch so
+ * the outcomes stay distinct and honest: an `ok` turn streams the model's grounded answer; empty
+ * evidence / empty collection refuse (per-creator when scoped to one, else neutral); an invalid
+ * scope clarifies. A provider failure never reaches here — it throws out of the tool.
+ */
+export function finalizeText(capture: SearchCapture, modelText: string): string {
+  switch (capture.outcome) {
+    case "ok":
+      return modelText;
+    case "invalid_scope":
+      return invalidScopeText(capture.invalidHandles ?? []);
+    default:
+      return refusalText(effectiveCreatorName(capture));
+  }
+}
+
+/**
+ * Force the search tool in step 0, then take it away for the answer step. Belt-and-braces with the
+ * tool's own one-execution guard: even if a step batches parallel calls, the second no-ops, and the
+ * answer step has no tool to call, so a catalog fact can never appear without a search behind it.
+ */
+function searchThenAnswer({ stepNumber }: { stepNumber: number }): {
+  toolChoice: "required" | "none";
+  activeTools: string[];
+} {
+  return stepNumber === 0
+    ? { toolChoice: "required", activeTools: ["searchCreatorCatalog"] }
+    : { toolChoice: "none", activeTools: [] };
+}
+
+/**
+ * When the user fixed a single creator (a Panel column), lead the turn with a directive naming them
+ * and their exact refusal sentence, so a model refusal is that creator's — mirroring the deterministic
+ * refusal the app emits for empty evidence. Unscoped / whole-collection turns get no directive and the
+ * neutral refusal voice. We never infer a pronoun from a name (see `refusalText`).
+ */
+function currentTurn(input: Ask): ModelMessage {
+  const name =
+    input.selectedCreatorHandles?.length === 1
+      ? displayNameFor(input.selectedCreatorHandles[0])
+      : undefined;
+  const directive = name
+    ? `You are answering about ${name}'s YouTube catalog. If the catalog does not address the exact thing asked, reply with exactly "${refusalText(name)}" and nothing else.\n\n`
+    : "";
+  return { role: "user", content: `${directive}${input.query}` };
+}
+
+/**
+ * Assemble a scoped run: bounded history + the current turn as messages, server-owned scope + the
+ * retrieval capture on the RequestContext, and the phase controls. `rerank` is left unset on the
+ * product path (the tool defaults to strict), and set by the eval to A/B the reranker.
+ */
+export function buildScopedRun(input: Ask & { rerank?: boolean }): ScopedRun {
+  const capture: SearchCapture = { executed: false };
+
+  const requestContext = new RequestContext();
+  requestContext.setRaw("collectionCreatorHandles", input.collectionCreatorHandles);
+  if (input.selectedCreatorHandles) {
+    requestContext.setRaw("selectedCreatorHandles", input.selectedCreatorHandles);
+  }
+  requestContext.setRaw("capture", capture);
+  if (input.rerank !== undefined) requestContext.setRaw("rerank", input.rerank);
+
+  const history = (input.history ?? []).slice(-MAX_HISTORY_MESSAGES);
+  const messages: ModelMessage[] = [...history, currentTurn(input)];
+
+  const controller = new AbortController();
+  input.signal?.addEventListener("abort", () => controller.abort(), { once: true });
+
   return {
-    evidence,
-    creatorName,
-    messages:
-      evidence.length === 0
-        ? undefined
-        : buildAnswerMessages(query, evidence, creatorName),
+    messages,
+    capture,
+    controller,
+    options: {
+      requestContext,
+      maxSteps: MAX_STEPS,
+      prepareStep: searchThenAnswer,
+      abortSignal: controller.signal,
+    },
   };
 }
 
 /**
- * The one entrypoint every surface calls. Web, Discord, and Telegram all reduce to this.
+ * The one entrypoint every surface calls. The agent searches once (the `searchCreatorCatalog` tool),
+ * then answers grounded + cited — or the application returns the honest non-answer.
  *
- * Flow: retrieve → emit citations/sources up front → build a numbered evidence packet → stream a
- * grounded answer with inline [n] markers. Prior turns (`input.history`) are prepended so the model
- * can resolve cross-turn references, but retrieval still runs on the current question alone (query
- * rewrite is identity here) and grounding stays on this turn's Evidence — history is context, not a
- * source. Absent history = single-turn (the eval path). The agentic loop comes later.
+ * Streaming contract, unchanged from the caller's view: citations/sources are emitted BEFORE any
+ * answer text. We read them off the tool result (the exact Evidence the model was shown, numbered the
+ * same), so `[n]` deep-links line up. Planning text can never leak as the answer: text is forwarded
+ * only after an `ok` search. A non-ok outcome emits the deterministic text and stops; a tool/provider
+ * error throws (operational), never a silent refusal.
  */
 export async function* ask(input: Ask): AsyncGenerator<AskChunk> {
-  const { evidence, messages, creatorName } = await prepareAnswer(input.query, {
-    creatorHandle: input.creatorHandle,
-  });
+  const { messages, capture, options, controller } = buildScopedRun(input);
+  const out = await nexusAgent.stream(messages, options);
 
-  // Citations/source cards are known before generation, so they stream first.
-  const { citations, sources } = evidenceToCitations(evidence);
-  yield { citations, sources };
+  let answering = false;
+  let citationsEmitted = false;
 
-  if (!messages) {
-    yield { textDelta: refusalText(creatorName) };
-    return;
+  for await (const chunk of out.fullStream) {
+    if (chunk.type === "tool-error") {
+      const { error } = chunk.payload;
+      throw error instanceof Error ? error : new Error(String(error));
+    }
+
+    if (
+      chunk.type === "tool-result" &&
+      chunk.payload.toolName === "searchCreatorCatalog"
+    ) {
+      const { citations, sources } = evidenceToCitations(capture.evidence ?? []);
+      yield { citations, sources };
+      citationsEmitted = true;
+
+      if (capture.outcome !== "ok") {
+        yield { textDelta: finalizeText(capture, "") };
+        controller.abort(); // no answer step needed — stop the model call.
+        return;
+      }
+      answering = true;
+      continue;
+    }
+
+    if (chunk.type === "text-delta" && answering) {
+      yield { textDelta: chunk.payload.text };
+    }
   }
 
-  // Prior turns as plain context, then the current turn (which carries the Evidence packet).
-  const turn: ModelMessage[] = [...(input.history ?? []), ...messages];
-  const out = await nexusAgent.stream(turn);
-
-  const reader = out.textStream.getReader();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) yield { textDelta: value };
-    }
-  } finally {
-    reader.releaseLock();
+  // Defensive: the model somehow answered without searching (impossible under toolChoice "required").
+  // Never let that become an uncited factual answer.
+  if (!citationsEmitted) {
+    yield { citations: [], sources: [] };
+    yield { textDelta: refusalText() };
   }
 }

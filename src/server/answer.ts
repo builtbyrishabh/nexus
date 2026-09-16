@@ -1,12 +1,9 @@
-import { buildEvidencePacket } from "~/server/domain/citations";
-import type { Evidence } from "~/server/domain/types";
-
 /**
  * The refusal — "the refusal is the product" (docs/DESIGN.md §1). It lives here once, as a function
- * of the creator so the Panel (Slice 4) can refuse per column: the agent is instructed to emit
- * exactly this when the evidence falls short, `ask()` emits it directly when retrieval returns
- * nothing, and the eval harness uses it to detect refusals — one definition, every reader → no
- * drift. Neutral "their" on purpose: we never infer a pronoun from a creator's name.
+ * of the creator so the query path can refuse per creator: the agent is instructed to emit exactly
+ * this when the evidence falls short, `ask()`/`finalizeText` emit it directly for empty evidence, and
+ * the eval harness uses it to detect refusals — one definition, every reader → no drift. Neutral
+ * "their" on purpose: we never infer a pronoun from a creator's name.
  *
  * Unscoped (home chat, eval across the whole corpus) passes no name and gets a neutral sentence;
  * a Panel column passes its creator's display name. Both are the product's one refusal voice.
@@ -35,31 +32,4 @@ export function isRefusal(text: string, creatorName?: string): boolean {
       .replace(/[.!?]+$/, "")
       .toLowerCase();
   return normalize(text) === normalize(refusalText(creatorName));
-}
-
-/**
- * The user turn handed to the generation agent: the numbered evidence packet followed by the
- * question. Marker `[n]` in the answer maps 1:1 to evidence entry `n` (see buildEvidencePacket),
- * which is in turn `citations[n-1]`. Shared so streaming answers and eval-time answers are
- * generated from byte-identical prompts — the eval only means something if it grades the real path.
- *
- * When scoped to a creator (a Panel column), a directive naming that creator and their exact
- * refusal sentence leads the turn, so the static agent prompt's generic refusal is specialized
- * per column. Unscoped (home chat / eval) passes no name and the turn is unchanged — which is why
- * the eval gate keeps grading the same prompt it always has.
- */
-export function buildAnswerMessages(
-  query: string,
-  evidence: Evidence[],
-  creatorName?: string,
-): { role: "user"; content: string }[] {
-  const directive = creatorName
-    ? `You are answering about ${creatorName}'s YouTube catalog. If the Evidence does not address the exact thing asked, reply with exactly "${refusalText(creatorName)}" and nothing else.\n\n`
-    : "";
-  return [
-    {
-      role: "user",
-      content: `${directive}Evidence:\n\n${buildEvidencePacket(evidence)}\n\nQuestion: ${query}`,
-    },
-  ];
 }

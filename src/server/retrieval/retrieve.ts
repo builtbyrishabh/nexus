@@ -39,6 +39,9 @@ type HydratedRow = {
  */
 const uuidArray = (ids: string[]): SQL => sql`${sql.param(ids)}::uuid[]`;
 
+/** Bind a JS string array as ONE Postgres `text[]` parameter (same reasoning as `uuidArray`). */
+const textArray = (values: string[]): SQL => sql`${sql.param(values)}::text[]`;
+
 /**
  * Public boundary → parameterized only. `Filter` values arrive from callers, so every id/kind
  * binds as a placeholder (the uuid/enum columns validate them); nothing is ever interpolated
@@ -52,8 +55,9 @@ function filterConditions(filter?: Filter): SQL[] {
     conditions.push(sql`c.source_id = ANY(${uuidArray(sourceIds)})`);
   }
   if (filter?.kind) conditions.push(sql`s.kind = ${filter.kind}`);
-  if (filter?.creatorHandle) {
-    conditions.push(sql`s.creator_handle = ${filter.creatorHandle}`);
+  const handles = filter?.creatorHandles;
+  if (handles && handles.length > 0) {
+    conditions.push(sql`s.creator_handle = ANY(${textArray(handles)})`);
   }
   return conditions;
 }

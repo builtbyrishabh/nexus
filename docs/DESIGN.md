@@ -22,8 +22,22 @@ Context-Precision** scorers drive a harness (`pnpm eval`, gated by exit code). *
 expansion, toggled per-run so `pnpm eval --compare` reads the lift directly; on by default since
 the 31-video measurement (Slice 3.3).
 Provider defaults to Cohere rerank-3.5 (one env knob, `RERANK_MODEL`). The harness grades the real
-query path: `prepareAnswer()` in `src/server/ask.ts` is the single definition of retrieve → refuse-or-
-prompt, and both `ask()` (streaming) and the eval (blocking) finish it — no second copy to drift.
+query path: `buildScopedRun()` in `src/server/ask.ts` is the single definition of the agentic path,
+and both `ask()` (streaming) and the eval (blocking) finish it — no second copy to drift.
+
+**Slice 6 status — retrieval as an agent tool (issue #20):** retrieval is now a native Mastra tool
+(`searchCreatorCatalog`) the agent calls, not a fixed step before it. The agent sees bounded history
+first, derives a standalone search query (so a follow-up like "why does he recommend that?" searches
+on the resolved reference, not the raw words), and answers grounded + cited. `prepareStep` forces the
+tool in step 0 then disables tools for the answer step; the tool's own guard enforces exactly one
+retrieval execution. **Creator scope** is server-owned on the `RequestContext`
+(`collectionCreatorHandles` = the searchable roster, never model-supplied; `selectedCreatorHandles` =
+the user's explicit pick), and the agent may pass its own `creatorHandles` narrowing. `resolveScope`
+(`src/server/domain/scope.ts`) picks the effective set — **selection > agent choice > whole
+collection** — with distinct outcomes for empty collection and out-of-collection handles. The
+application, not the model, decides the final text for the non-answer branches (empty evidence →
+refusal, invalid scope → clarification), so a provider failure stays an operational error, never a
+false "never covered".
 
 **Slice 3 status — full-channel ingest (decided 2026-09-07, rebuilt from scratch):** One command
 turns a channel into a corpus without touching the query path. **Discovery** is youtubei.js
@@ -227,7 +241,7 @@ type Evidence = {
   locator?: { startSec: number; endSec: number };
   source: { title: string; url: string };
 };
-type Filter = { sourceIds?: string[]; kind?: Source["kind"] };
+type Filter = { sourceIds?: string[]; kind?: Source["kind"]; creatorHandles?: string[] };
 
 function retrieve(query: string, opts?: { topK?: number; filter?: Filter; rerank?: boolean }): Promise<Evidence[]>;
 ```
@@ -263,10 +277,14 @@ function ask(input: {
   channel: "web" | "discord" | "telegram";
   userId: string;
   threadId: string;
-}): AsyncIterable<{ textDelta?: string; citations?: Citation[] }>;
+  collectionCreatorHandles: string[]; // server-owned searchable roster
+  selectedCreatorHandles?: string[];  // the user's explicit pick (a Panel column)
+  history?: HistoryMessage[];
+  signal?: AbortSignal;
+}): AsyncIterable<{ textDelta?: string; citations?: Citation[]; sources?: SourceCard[] }>;
 ```
 Web (`useChat`), Discord, and Telegram all reduce to `ask()`. Citations stream as a
-`source`/data part before/with the token stream. This is how "one codebase, three surfaces" holds.
+`source`/data part before the token stream. This is how "one codebase, three surfaces" holds.
 
 ---
 
@@ -282,13 +300,15 @@ scope -> discover uploads (newest first, paged)
            loadMeta -> chunk -> contextualize -> embed -> upsert (one transaction)
 ```
 
-**Ask (online, one request):**
+**Ask (online, one request) — agentic, one search per turn (issue #20):**
 ```
-message -> rewrite to standalone query
-        -> retrieve (dense + sparse -> RRF -> rerank -> neighbors)
-        -> build numbered evidence packet
-        -> generate grounded answer with inline [n] markers
-        -> stream textDelta + resolve citations
+message + bounded history + server-owned scope
+        -> agent picks { query, creatorHandles? }  (step 0, tool forced)
+        -> searchCreatorCatalog: resolveScope -> retrieve (dense + sparse -> RRF -> rerank -> neighbors)
+        -> numbered evidence packet back to the agent (one retrieval execution)
+        -> agent answers grounded with inline [n] markers  (step 1, tools disabled)
+           OR the app returns the honest non-answer (refusal / clarification)
+        -> stream citations first, then textDelta
         -> render per surface (web parts / Discord / Telegram)
 ```
 

@@ -91,8 +91,12 @@ export type Evidence = {
 export type Filter = {
   sourceIds?: string[];
   kind?: SourceKind;
-  /** Scope retrieval to one creator's catalog (the Panel seam). Matches `source.creator_handle`. */
-  creatorHandle?: string;
+  /**
+   * Scope retrieval to a set of creators' catalogs. Matches `source.creator_handle` via `= ANY(...)`.
+   * A set (not one handle) so an effective scope can be one selected creator, an agent-chosen subset,
+   * or the whole collection — one filter shape, no API redesign when a comparison spans several.
+   */
+  creatorHandles?: string[];
 };
 
 /** What the user sees for one inline [n] marker. */
@@ -123,16 +127,28 @@ export type Ask = {
   channel: "web" | "discord" | "telegram";
   userId: string;
   threadId: string;
-  /** Scope the answer to one creator's catalog (a Panel column). Absent = the unscoped home chat. */
-  creatorHandle?: string;
+  /**
+   * The creators this request may search — server-owned, resolved at the request boundary, NEVER
+   * supplied by the model. The agent can only narrow within this set; an empty set means no
+   * searchable scope (never an unrestricted query). Defaults to the configured collection.
+   */
+  collectionCreatorHandles: string[];
+  /**
+   * The user's explicit creator selection (a Panel column pins one). Validated against the
+   * collection at the boundary. When present it overrides the agent's choice; when absent the
+   * agent may choose creators from the collection, or the whole collection is searched.
+   */
+  selectedCreatorHandles?: string[];
   /**
    * Prior turns of this conversation, oldest→newest, so the model can resolve references like
    * "the second one" across turns. Supplied by the caller: the main chat recalls it from the
    * store (keyed by threadId), the Panel carries it up from the client (ephemeral). Absent =
-   * single-turn (the eval path). Grounding is unaffected — the answer is still built only from
-   * the current question's Evidence; history is context, never a source or a retrieval input.
+   * single-turn (the eval path). History is context for the model's search query and answer, never
+   * itself Evidence — grounding stays on the Evidence the tool returns this turn.
    */
   history?: HistoryMessage[];
+  /** Client cancellation, propagated to the model call so a disconnect stops generation. */
+  signal?: AbortSignal;
 };
 
 /** One streamed chunk out of `ask()` (locked contract). */

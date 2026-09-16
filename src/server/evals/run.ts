@@ -1,6 +1,7 @@
-import { isRefusal, refusalText } from "~/server/answer";
-import { prepareAnswer } from "~/server/ask";
+import { isRefusal } from "~/server/answer";
+import { buildScopedRun, finalizeText } from "~/server/ask";
 import { evidenceText, evidenceToCitations } from "~/server/domain/citations";
+import { DEFAULT_COLLECTION, displayNameFor } from "~/server/domain/creators";
 import { GOLDEN_SET, validateGolden, type GoldenCase } from "~/server/evals/golden";
 import { scoreAnswer } from "~/server/evals/score";
 import { summarize, type CaseResult, type EvalSummary } from "~/server/evals/summary";
@@ -16,11 +17,17 @@ const ZERO_SCORES = {
   contextPrecision: 0,
 } as const;
 
+/** The creator a scoped case refuses as (single selection → their name), for the refusal check. */
+function caseCreatorName(c: GoldenCase): string | undefined {
+  return c.selected?.length === 1 ? displayNameFor(c.selected[0]) : undefined;
+}
+
 /**
- * Run one golden case through the REAL query path: `prepareAnswer()` is the same function `ask()`
- * calls (same retrieve options, same refusal decision, same prompt), so the score reflects
- * production rather than a lookalike, and whatever Tier 2 adds to the path is graded automatically.
- * The only difference from `ask()` is the finish: a blocking generate instead of a stream.
+ * Run one golden case through the REAL production path: `buildScopedRun` + `finalizeText` are the
+ * exact orchestration `ask()` streams — same agent, same `searchCreatorCatalog` tool, same scope,
+ * same phase control — so the score reflects production, not a lookalike. The only difference is the
+ * finish: a blocking `generate` instead of a stream. Evidence for scoring comes off the tool's
+ * capture, i.e. exactly what the model was shown.
  *
  * Grading follows the case kind, not the model's choice: expected-refusal cases carry the decision
  * only (`scores` absent); answerable cases are always scored — real judge scores when the model
@@ -28,14 +35,21 @@ const ZERO_SCORES = {
  * instead of quietly dropping out of them (see summary.ts).
  */
 async function runCase(c: GoldenCase, rerank: boolean): Promise<CaseResult> {
-  const { evidence, messages, creatorName } = await prepareAnswer(c.query, {
+  const run = buildScopedRun({
+    query: c.query,
+    channel: "web",
+    userId: "eval",
+    threadId: "eval",
+    collectionCreatorHandles: c.collection ?? [...DEFAULT_COLLECTION],
+    selectedCreatorHandles: c.selected,
+    history: c.history,
     rerank,
   });
-  const answer = messages
-    ? (await nexusAgent.generate(messages)).text
-    : refusalText(creatorName);
+  const { text } = await nexusAgent.generate(run.messages, run.options);
+  const answer = finalizeText(run.capture, text);
+  const evidence = run.capture.evidence ?? [];
 
-  const refused = isRefusal(answer, creatorName);
+  const refused = isRefusal(answer, caseCreatorName(c));
   const scores = c.expectRefusal
     ? undefined
     : refused

@@ -24,6 +24,14 @@ export const CREATORS: Creator[] = [
  * lineup can diverge from the roster (e.g. an archived creator) without touching scope logic. */
 export const PANEL_LINEUP: readonly string[] = CREATORS.map((c) => c.handle);
 
+/**
+ * The server-configured default collection: every creator a request may search when the app has no
+ * saved user interests yet (issue #20). The whole roster for now — this is the `collectionCreatorHandles`
+ * the request boundary owns and hands to the query path, never something the model supplies. When
+ * saved interests land, this becomes the per-user resolved set; the scope contract stays the same.
+ */
+export const DEFAULT_COLLECTION: readonly string[] = CREATORS.map((c) => c.handle);
+
 const BY_HANDLE = new Map(CREATORS.map((c) => [c.handle, c]));
 
 export function creatorByHandle(handle: string): Creator | undefined {

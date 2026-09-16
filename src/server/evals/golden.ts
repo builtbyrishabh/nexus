@@ -14,11 +14,21 @@
  * When the corpus grows (Slice 3 full-channel ingest), extend this set — the harness is
  * corpus-agnostic; only this list is corpus-specific.
  */
+import type { HistoryMessage } from "~/server/domain/types";
+
 export type GoldenCase = {
   id: string;
   query: string;
   /** true → out-of-corpus; correct behavior is to refuse rather than answer. */
   expectRefusal?: boolean;
+  /**
+   * Scope inputs for the issue #20 path (all optional; unset = whole default collection, single-turn).
+   * `selected` pins the user's explicit creator(s); `collection` overrides the searchable roster;
+   * `history` supplies prior turns so a follow-up can be graded on reference resolution.
+   */
+  selected?: string[];
+  collection?: string[];
+  history?: HistoryMessage[];
   note?: string;
 };
 
