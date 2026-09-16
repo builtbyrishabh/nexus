@@ -2,45 +2,65 @@ import { describe, expect, it } from "vitest";
 
 import { parseChatRequest } from "~/app/api/chat/request";
 
-const userMsg = (text: string, id?: string) => ({
-  ...(id ? { id } : {}),
+const threadId = "550e8400-e29b-41d4-a716-446655440000";
+const userMessage = {
+  id: "message-1",
   role: "user" as const,
-  parts: [{ type: "text", text }],
-});
+  parts: [{ type: "text" as const, text: "hello" }],
+};
 
 describe("parseChatRequest", () => {
-  it("normalizes a valid body (message + threadId), extracting the query and id", () => {
-    const r = parseChatRequest({ message: userMsg("hello", "m1"), threadId: "t1" });
-    expect(r).toEqual({
+  it("preserves the latest native user message", async () => {
+    const result = await parseChatRequest({ message: userMessage, threadId });
+
+    expect(result).toEqual({
       ok: true,
-      request: { query: "hello", threadId: "t1", userMessageId: "m1" },
+      request: { message: userMessage, threadId },
     });
   });
 
-  it("ignores unknown chat-client envelope keys", () => {
-    const r = parseChatRequest({
-      message: userMsg("hi", "m1"),
-      threadId: "t1",
+  it("ignores unknown transport envelope keys", async () => {
+    const result = await parseChatRequest({
+      message: userMessage,
+      threadId,
       trigger: "submit-message",
-      id: "t1",
+      id: threadId,
     });
-    expect(r.ok).toBe(true);
+
+    expect(result.ok).toBe(true);
   });
 
-  it("rejects a body missing its threadId", () => {
-    expect(parseChatRequest({ message: userMsg("hi") }).ok).toBe(false);
+  it("rejects a missing or invalid thread id", async () => {
+    expect((await parseChatRequest({ message: userMessage })).ok).toBe(false);
+    expect(
+      (await parseChatRequest({ message: userMessage, threadId: "not-a-uuid" })).ok,
+    ).toBe(false);
   });
 
-  it("rejects a body missing its message", () => {
-    expect(parseChatRequest({ threadId: "t1" }).ok).toBe(false);
+  it("rejects assistant messages", async () => {
+    const result = await parseChatRequest({
+      message: { ...userMessage, role: "assistant" },
+      threadId,
+    });
+
+    expect(result.ok).toBe(false);
   });
 
-  it("rejects a non-object body", () => {
-    expect(parseChatRequest(null).ok).toBe(false);
-    expect(parseChatRequest("nope").ok).toBe(false);
+  it("rejects messages without non-empty text", async () => {
+    const result = await parseChatRequest({
+      message: { ...userMessage, parts: [{ type: "text", text: "   " }] },
+      threadId,
+    });
+
+    expect(result.ok).toBe(false);
   });
 
-  it("rejects an empty or whitespace-only query", () => {
-    expect(parseChatRequest({ message: userMsg("   "), threadId: "t1" }).ok).toBe(false);
+  it("rejects malformed UI message parts", async () => {
+    const result = await parseChatRequest({
+      message: { ...userMessage, parts: [{ type: "text", text: 42 }] },
+      threadId,
+    });
+
+    expect(result.ok).toBe(false);
   });
 });
