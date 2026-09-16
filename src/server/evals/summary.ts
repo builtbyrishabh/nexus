@@ -6,7 +6,7 @@
  * logic is unit-testable without touching the network.
  */
 
-import type { Citation } from "~/server/domain/types";
+import type { CatalogEvidence } from "~/server/domain/citations";
 
 /** The three Tier-1 eval axes (docs canonical set). Each in [0, 1]. */
 export type AxisScores = {
@@ -39,12 +39,12 @@ export type CaseResult = {
   scores?: AxisScores;
   /** What the model said and what it was shown — for `--verbose` inspection; the gate ignores both. */
   answer?: string;
-  citations?: Citation[];
+  citations?: CatalogEvidence[];
 };
 
 export type EvalThresholds = AxisScores & { refusalAccuracy: number };
 
-/** Canonical pass bars. Refusal accuracy is 1.0 — the refusal is the product; it must be exact. */
+/** Canonical pass bars. Unsupported-answer behavior is judged semantically. */
 export const DEFAULT_THRESHOLDS: EvalThresholds = {
   faithfulness: 0.7,
   answerRelevancy: 0.7,
