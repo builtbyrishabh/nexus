@@ -15,7 +15,6 @@ const answered = (
   id,
   expectRefusal: false,
   refused: false,
-  citationsValid: true,
   scores: { faithfulness, answerRelevancy, contextPrecision },
 });
 
@@ -39,7 +38,6 @@ describe("summarize", () => {
     expect(s.scored).toBe(2); // the refusal is not graded
     expect(s.total).toBe(3);
     expect(s.refusalAccuracy).toBe(1);
-    expect(s.citationAccuracy).toBe(1);
     expect(s.passed).toBe(true);
     expect(s.failures).toEqual([]);
   });
@@ -79,17 +77,6 @@ describe("summarize", () => {
     expect(s.failures).toContain("faithfulness");
   });
 
-  it("fails when an answer has missing or unresolved citation markers", () => {
-    const result = answered("a", 0.9, 0.9, 0.9);
-    result.citationsValid = false;
-
-    const s = summarize([result]);
-
-    expect(s.citationAccuracy).toBe(0);
-    expect(s.failures).toContain("citationAccuracy");
-    expect(s.passed).toBe(false);
-  });
-
   it("does not divide by zero when every case is a refusal", () => {
     const s = summarize([refusalCase("r1", true), refusalCase("r2", true)]);
     expect(s.means).toEqual({
@@ -103,6 +90,5 @@ describe("summarize", () => {
 
   it("uses the canonical thresholds by default", () => {
     expect(DEFAULT_THRESHOLDS.refusalAccuracy).toBe(1);
-    expect(DEFAULT_THRESHOLDS.citationAccuracy).toBe(1);
   });
 });

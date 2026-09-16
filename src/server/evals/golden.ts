@@ -4,8 +4,8 @@
  * Hassi Nazir (Smile Match Dentistry, Orange County; uaLNfijnp-8). Two kinds of case:
  *
  * - answerable: the corpus covers it; we grade the answer (faithfulness · relevancy · precision).
- * - refusal (`expectRefusal`): the corpus does not cover it; the answer should acknowledge the
- *   missing evidence without inventing a catalog claim. We grade the behavior, not exact prose.
+ * - refusal (`expectRefusal`): the corpus does NOT cover it; the ONLY correct behavior is the
+ *   refusal (docs/DESIGN.md §1 "the refusal is the product"). We grade the decision, not prose.
  *
  * Refusal cases are deliberately a mix: clearly off-topic, near-topic (business advice the corpus
  * doesn't actually give), and world-knowledge traps (things the model knows about Hormozi that
@@ -14,14 +14,20 @@
  * When the corpus grows (Slice 3 full-channel ingest), extend this set — the harness is
  * corpus-agnostic; only this list is corpus-specific.
  */
-import type { ModelMessage } from "ai";
+import type { HistoryMessage } from "~/server/domain/types";
 
 export type GoldenCase = {
   id: string;
   query: string;
-  /** true means the catalog cannot support the requested claim. */
+  /** true → out-of-corpus; correct behavior is to refuse rather than answer. */
   expectRefusal?: boolean;
-  history?: ModelMessage[];
+  /**
+   * Scope inputs for the issue #20 path (all optional; unset = whole default collection, single-turn).
+   * `collection` overrides the searchable roster; `history` supplies prior turns so a follow-up can be
+   * graded on reference resolution.
+   */
+  collection?: string[];
+  history?: HistoryMessage[];
   note?: string;
 };
 
