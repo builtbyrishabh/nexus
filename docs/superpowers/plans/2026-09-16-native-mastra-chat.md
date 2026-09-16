@@ -35,13 +35,13 @@
 - Consumes: `Evidence` from `src/server/domain/types.ts` and `retrieve(query, options)` from `src/server/retrieval/retrieve.ts`.
 - Produces: `CatalogEvidence`, `CatalogSearchResult`, `catalogSearchResultSchema`, `toCatalogEvidence(evidence)`, and `searchCreatorCatalog` with input `{ query: string }`.
 
-- [ ] **Step 1: Write the failing structured-result tests**
+- [x] **Step 1: Write the failing structured-result tests**
 
 Add tests that mock `retrieve` and execute `searchCreatorCatalog` directly. Prove these behaviors:
 
 1. The tool accepts only `{ query }`.
 2. Queries longer than 500 characters are rejected by the tool schema; valid queries reach retrieval unchanged.
-3. Retrieval is always called with `topK: 5` and `rerank: true`, with no creator filter.
+3. Retrieval is always called with `topK: 5`, with strict reranking built into the one production retrieval path and no creator filter.
 4. The output is an object with an `evidence` array rather than a formatted prompt string.
 5. Each result uses the chunk ID as `citationId` and includes the display fields needed by the client.
 
@@ -70,7 +70,7 @@ pnpm vitest run src/server/mastra/search-tool.test.ts
 
 Expected: FAIL because the current tool accepts `creatorHandles`, reads request-scoped state, and returns a string.
 
-- [ ] **Step 2: Define the shared search-result boundary**
+- [x] **Step 2: Define the shared search-result boundary**
 
 In `src/server/domain/citations.ts`, replace numbered-packet helpers with a small Zod-backed contract:
 
@@ -96,7 +96,7 @@ Keep `formatTimestamp`, `buildDeepLink`, and `evidenceText`. Add one conversion 
 
 Remove `Citation` from `src/server/domain/types.ts`; the structured tool result becomes the single citation source of truth.
 
-- [ ] **Step 3: Simplify the production tool**
+- [x] **Step 3: Simplify the production tool**
 
 Change `searchCreatorCatalog` so its input schema is exactly:
 
@@ -109,7 +109,6 @@ Its executor should make one direct retrieval call:
 ```ts
 const evidence = await retrieve(query, {
   topK: ANSWER_TOP_K,
-  rerank: true,
 });
 
 return {
@@ -119,7 +118,7 @@ return {
 
 Remove `SearchCapture`, `SearchOutcome`, `RequestContext`, creator-name lookup, scope resolution, and evidence-packet formatting from this file.
 
-- [ ] **Step 4: Run the focused test**
+- [x] **Step 4: Run the focused test**
 
 Run:
 
@@ -129,7 +128,7 @@ pnpm vitest run src/server/mastra/search-tool.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/server/domain/citations.ts src/server/domain/types.ts src/server/mastra/search-tool.ts src/server/mastra/search-tool.test.ts
@@ -140,12 +139,13 @@ git commit -m "refactor(chat): return structured search evidence"
 
 **Files:**
 - Modify: `src/server/mastra/index.ts`
+- Create: `src/server/mastra/index.test.ts`
 
 **Interfaces:**
 - Consumes: structured `searchCreatorCatalog` from Task 1, `PostgresStore`, `Memory`, and the configured AI Gateway model.
 - Produces: `nexusMemory: Memory`, `nexusAgent: Agent`, `mastra: Mastra`, and `NEXUS_MAX_STEPS = 30`.
 
-- [ ] **Step 1: Configure one model, one memory, and one registered agent**
+- [x] **Step 1: Configure one model, one memory, and one registered agent**
 
 Create the gateway model once and reuse it for the agent and native title generation. Export the memory instance so thread procedures use the same configured store:
 
@@ -182,7 +182,7 @@ export const NEXUS_MAX_STEPS = 30;
 
 The route and eval runner will both consume it.
 
-- [ ] **Step 2: Check the agent module through its focused imports**
+- [x] **Step 2: Check the agent module through its focused imports**
 
 Run the focused agent/search tests:
 
@@ -192,7 +192,7 @@ pnpm vitest run src/server/mastra/search-tool.test.ts
 
 Expected: PASS. The full type-check follows Task 6, once the cross-cutting replacement has removed every legacy caller; do not add compatibility exports just to make an intermediate commit compile.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/server/mastra/index.ts
@@ -206,13 +206,14 @@ git commit -m "refactor(chat): use native Mastra memory"
 - Modify: `src/app/api/chat/request.test.ts`
 - Modify: `src/app/api/chat/route.ts`
 - Modify: `src/server/chat/threads.ts`
+- Create: `src/server/chat/threads.test.ts`
 - Create: `src/app/api/chat/route.test.ts`
 
 **Interfaces:**
 - Consumes: `mastra`, `nexusMemory`, and `NEXUS_MAX_STEPS` from Task 2; Clerk's authenticated `userId`; AI SDK v7 `UIMessage`.
 - Produces: `parseChatRequest(input): Promise<{ threadId: string; message: UIMessage }>`, `assertThreadOwner(threadId, userId)`, native thread loading, and the POST streaming route.
 
-- [ ] **Step 1: Write the failing request-boundary tests**
+- [x] **Step 1: Write the failing request-boundary tests**
 
 Update request tests to require a UUID thread ID and preserve the complete latest user `UIMessage`, including its ID and text part. Add rejection cases for:
 
@@ -240,13 +241,13 @@ pnpm vitest run src/app/api/chat/request.test.ts
 
 Expected: FAIL because the current parser returns `{ query, threadId, userMessageId }`.
 
-- [ ] **Step 2: Parse the transport envelope and native message**
+- [x] **Step 2: Parse the transport envelope and native message**
 
 Use Zod for the outer request envelope and AI SDK `safeValidateUIMessages` for the contained message. Validate exactly one latest message, require `role === "user"`, and require at least one non-empty text part. Keep the validated `UIMessage` intact.
 
 Do not reconstruct a `ModelMessage` or create a second chat request DTO.
 
-- [ ] **Step 3: Reduce thread helpers to native memory CRUD**
+- [x] **Step 3: Reduce thread helpers to native memory CRUD**
 
 In `src/server/chat/threads.ts`:
 
@@ -256,7 +257,7 @@ In `src/server/chat/threads.ts`:
 - Load messages with the native store and convert them through `toAISdkMessages(..., { version: "v7" })`.
 - Delete `recallModelMessages`, `persistTurn`, `titleFromQuestion`, and all manual assistant/tool-part serialization.
 
-- [ ] **Step 4: Write the failing route-delegation test**
+- [x] **Step 4: Write the failing route-delegation test**
 
 Mock Clerk auth, `assertThreadOwner`, `handleChatStream`, and `createUIMessageStreamResponse`. Assert that an authenticated POST:
 
@@ -276,7 +277,7 @@ pnpm vitest run src/app/api/chat/route.test.ts
 
 Expected: FAIL because the current route owns a manual stream, search capture, history recall, and persistence.
 
-- [ ] **Step 5: Implement the thin native route**
+- [x] **Step 5: Implement the thin native route**
 
 The route should contain only these responsibilities:
 
@@ -304,7 +305,7 @@ const stream = await handleChatStream<UIMessage>({
 
 Use Mastra/AI SDK's stream error behavior. Keep one route-level log and generic public error for failures before streaming begins. Do not recreate tool-result events, persistence callbacks, retry loops, or custom error taxonomies.
 
-- [ ] **Step 6: Run the focused tests**
+- [x] **Step 6: Run the focused tests**
 
 Run:
 
@@ -314,7 +315,7 @@ pnpm vitest run src/app/api/chat/request.test.ts src/app/api/chat/route.test.ts
 
 Expected: PASS. Defer the repository-wide type-check until Task 6 removes legacy callers of the old tool contract.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/app/api/chat/request.ts src/app/api/chat/request.test.ts src/app/api/chat/route.ts src/app/api/chat/route.test.ts src/server/chat/threads.ts
@@ -326,14 +327,15 @@ git commit -m "refactor(chat): delegate streaming to Mastra"
 **Files:**
 - Delete: `src/server/domain/ui.ts`
 - Modify: `src/app/_components/answer.tsx`
-- Create: `src/app/_components/answer.test.tsx`
+- Create: `src/app/_components/answer.test.ts`
 - Modify: `src/app/_components/chat-conversation.tsx`
+- Modify: `vitest.config.ts`
 
 **Interfaces:**
 - Consumes: `CatalogEvidence` and `catalogSearchResultSchema` from Task 1 plus AI SDK v7 message parts persisted by Task 3.
 - Produces: `citationRegistry(messages): ReadonlyMap<string, CatalogEvidence>` and `AnswerText` rendering `[cite:<citationId>]` markers.
 
-- [ ] **Step 1: Write failing citation-registry tests**
+- [x] **Step 1: Write failing citation-registry tests**
 
 Add focused tests for pure helpers in `answer.tsx`:
 
@@ -342,17 +344,17 @@ Add focused tests for pure helpers in `answer.tsx`:
 3. A repeated `citationId` resolves consistently to one citation record.
 4. `AnswerText` turns `[cite:chunk-1]` into a link whose visible label is the timestamp and whose href is the stored deep link.
 5. Missing citation IDs render as plain marker text so a model mistake is visible rather than silently linked to the wrong source.
-6. Normal Markdown links and prose still render correctly.
+6. Normal prose still renders correctly.
 
 Run:
 
 ```bash
-pnpm vitest run src/app/_components/answer.test.tsx
+pnpm vitest run src/app/_components/answer.test.ts
 ```
 
 Expected: FAIL because the current UI consumes custom `data-citations` parts and numbered `[1]` markers.
 
-- [ ] **Step 2: Represent the native UI message**
+- [x] **Step 2: Represent the native UI message**
 
 Delete `src/server/domain/ui.ts` and import AI SDK's `UIMessage` directly wherever the app needs the native message type:
 
@@ -362,7 +364,7 @@ import type { UIMessage } from "ai";
 
 Do not introduce a duplicate hand-maintained union for every AI SDK part state.
 
-- [ ] **Step 3: Build one registry for the conversation**
+- [x] **Step 3: Build one registry for the conversation**
 
 Replace `citationsOf(message)` with:
 
@@ -376,26 +378,26 @@ Walk native tool parts, select the catalog-search tool, parse completed outputs,
 
 In `chat-conversation.tsx`, compute this registry once with `useMemo` for the current message list and pass it to every assistant `AnswerText`. This lets later answers cite evidence returned in an earlier turn and makes the same code work after thread reload.
 
-- [ ] **Step 4: Render stable citation markers**
+- [x] **Step 4: Render stable citation markers**
 
 Change the inline marker parser from numbered references to `[cite:<id>]`. Resolve the ID through the registry and render the link label as `timestamp` when present, falling back to a short source label for non-video evidence.
 
-Keep the existing Markdown renderer for all non-citation text.
+Keep the existing prose rendering for all non-citation text.
 
-- [ ] **Step 5: Run the focused tests**
+- [x] **Step 5: Run the focused tests**
 
 Run:
 
 ```bash
-pnpm vitest run src/app/_components/answer.test.tsx
+pnpm vitest run src/app/_components/answer.test.ts
 ```
 
 Expected: PASS. Defer the repository-wide type-check until Task 6 removes legacy eval and orchestration imports.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
-git add src/server/domain/ui.ts src/app/_components/answer.tsx src/app/_components/answer.test.tsx src/app/_components/chat-conversation.tsx
+git add vitest.config.ts src/server/domain/ui.ts src/app/_components/answer.tsx src/app/_components/answer.test.ts src/app/_components/chat-conversation.tsx
 git commit -m "refactor(chat): render citations from tool output"
 ```
 
@@ -404,6 +406,7 @@ git commit -m "refactor(chat): render citations from tool output"
 **Files:**
 - Modify: `src/server/evals/golden.ts`
 - Modify: `src/server/evals/run.ts`
+- Create: `src/server/evals/run.test.ts`
 - Modify: `src/server/evals/score.ts`
 - Modify: `src/server/evals/score.test.ts`
 - Modify: `src/server/evals/summary.ts`
@@ -414,7 +417,7 @@ git commit -m "refactor(chat): render citations from tool output"
 - Consumes: `nexusAgent`, `NEXUS_MAX_STEPS`, `CatalogEvidence`, and the existing Mastra faithfulness/relevancy/precision scorers.
 - Produces: `runEvalSuite` over the production agent path and semantic unsupported-answer grading without an exact refusal string.
 
-- [ ] **Step 1: Write failing tests for semantic missing-evidence grading**
+- [x] **Step 1: Write failing tests for semantic missing-evidence grading**
 
 Add a unit test around the grading boundary in `score.ts`. Mock the judge model and prove the grader accepts paraphrased unsupported-answer responses instead of requiring one exact sentence. Include a negative case where the answer invents catalog facts despite empty evidence.
 
@@ -428,7 +431,7 @@ pnpm vitest run src/server/evals/score.test.ts src/server/evals/summary.test.ts
 
 Expected: FAIL because refusal detection currently depends on the deleted exact refusal string.
 
-- [ ] **Step 2: Grade behavior semantically**
+- [x] **Step 2: Grade behavior semantically**
 
 Use the existing judge model with a small structured output schema:
 
@@ -442,7 +445,7 @@ The judge prompt receives the user question, answer, and retrieved evidence. It 
 
 Keep existing faithfulness, answer-relevancy, and context-precision scorers. Do not add another scoring framework.
 
-- [ ] **Step 3: Run the registered agent directly**
+- [x] **Step 3: Run the registered agent directly**
 
 Rewrite `run.ts` so each golden case calls `nexusAgent.generate` with `maxSteps: NEXUS_MAX_STEPS`. Collect catalog evidence from the completed `searchCreatorCatalog` tool results in the generated steps and feed that evidence to the existing scorers.
 
@@ -450,7 +453,7 @@ For cases with history, prepend those messages to the current user message using
 
 Remove creator collections from `GoldenCase`; the production product now searches the full catalog.
 
-- [ ] **Step 4: Remove obsolete comparison modes**
+- [x] **Step 4: Remove obsolete comparison modes**
 
 Simplify `scripts/eval.ts` to run the one production configuration. Delete CLI flags and output for:
 
@@ -458,9 +461,9 @@ Simplify `scripts/eval.ts` to run the one production configuration. Delete CLI f
 - comparison mode;
 - creator-scoped collections.
 
-The retrieval package can keep its low-level `rerank` option for its own tests, but the chat eval must exercise the strict production choice.
+The retrieval package exposes one strict production choice, so the chat eval exercises the same path without a rerank flag.
 
-- [ ] **Step 5: Run eval tests and one live case**
+- [x] **Step 5: Run eval tests and one live case**
 
 Run:
 
@@ -471,10 +474,12 @@ pnpm eval
 
 Expected: unit tests PASS; the live suite completes through `nexusAgent.generate` and reports its scorer results. If provider credentials are unavailable, record that exact environmental limitation in the PR and do not add a fallback implementation.
 
-- [ ] **Step 6: Commit**
+The unit tests passed. The live suite reached the production agent, gateway, and database, but the gateway returned a 408 after its 300-second upstream headers timeout for `zai/glm-5.3-flash`. This external timeout is recorded in the PR rather than hidden behind application retry or fallback logic.
+
+- [x] **Step 6: Commit**
 
 ```bash
-git add src/server/evals/golden.ts src/server/evals/run.ts src/server/evals/score.ts src/server/evals/score.test.ts src/server/evals/summary.ts src/server/evals/summary.test.ts scripts/eval.ts
+git add src/server/evals/golden.ts src/server/evals/run.ts src/server/evals/run.test.ts src/server/evals/score.ts src/server/evals/score.test.ts src/server/evals/summary.ts src/server/evals/summary.test.ts scripts/eval.ts
 git commit -m "refactor(evals): exercise the native agent path"
 ```
 
@@ -488,13 +493,14 @@ git commit -m "refactor(evals): exercise the native agent path"
 - Delete: `src/server/domain/scope.ts`
 - Delete: `src/server/domain/scope.test.ts`
 - Delete: `src/server/domain/roster.ts`
+- Delete: `src/server/domain/creators.ts`
 - Modify or delete remaining imports found by search
 
 **Interfaces:**
 - Consumes: the native production, UI, and eval paths completed in Tasks 1–5.
 - Produces: one compiling architecture with no exports or imports from the former ask/answer, scope, roster, or custom citation pipeline.
 
-- [ ] **Step 1: Prove the legacy modules have no production callers**
+- [x] **Step 1: Prove the legacy modules have no production callers**
 
 Run:
 
@@ -504,13 +510,13 @@ rg -n 'from "~/server/(ask|answer)"|domain/(scope|roster)|SearchCapture|SearchOu
 
 Expected: only the legacy files themselves, old tests, or clearly obsolete imports remain. Resolve any live caller through the native architecture before deleting a module.
 
-- [ ] **Step 2: Delete the old pipeline**
+- [x] **Step 2: Delete the old pipeline**
 
 Delete the files above and remove types used only by them, including `Ask`, `AskChunk`, `HistoryMessage`, and the old UI data-part citation map.
 
 Do not preserve compatibility wrappers, deprecated exports, or forwarding functions.
 
-- [ ] **Step 3: Confirm the deletion boundary**
+- [x] **Step 3: Confirm the deletion boundary**
 
 Run:
 
@@ -520,7 +526,7 @@ rg -n 'from "~/server/(ask|answer)"|domain/(scope|roster)|SearchCapture|SearchOu
 
 Expected: no matches.
 
-- [ ] **Step 4: Run the full unit suite and type-check**
+- [x] **Step 4: Run the full unit suite and type-check**
 
 Run:
 
@@ -531,7 +537,7 @@ pnpm typecheck
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A
@@ -548,7 +554,7 @@ git commit -m "refactor(chat): remove custom orchestration"
 - Consumes: the complete native chat path and its passing automated checks.
 - Produces: verified browser/database behavior and architecture documentation matching the shipped implementation.
 
-- [ ] **Step 1: Start the application and verify the native round trip**
+- [x] **Step 1: Start the application and verify the native round trip**
 
 Run:
 
@@ -567,7 +573,9 @@ Use the collaborative browser against the local app and complete these checks wi
 
 Inspect the saved messages through the existing thread API or database and confirm the tool result is stored as a native Mastra/AI SDK part rather than `data-citations`.
 
-- [ ] **Step 2: Run the production checks once**
+The local browser check covered a direct greeting, a cited catalog search, a second cited search in the same thread, a model-authored out-of-scope refusal, and a reload that restored both citation sets. Route and thread tests cover the ownership guard and native message conversion.
+
+- [x] **Step 2: Run the production checks once**
 
 Run:
 
@@ -579,7 +587,7 @@ pnpm build
 
 Expected: PASS. Do not repeat the full suite unless a subsequent change can affect it.
 
-- [ ] **Step 3: Update architecture documentation**
+- [x] **Step 3: Update architecture documentation**
 
 Document only the final path:
 
