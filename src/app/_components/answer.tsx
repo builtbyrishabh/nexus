@@ -14,6 +14,7 @@ export function citationRegistry(
   const citations = new Map<string, CatalogEvidence>();
 
   for (const message of messages) {
+    if (message.role !== "assistant") continue;
     for (const part of message.parts) {
       if (
         !isToolUIPart(part) ||

@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { handleChatStream } from "@mastra/ai-sdk";
+import { TRPCError } from "@trpc/server";
 import { createUIMessageStreamResponse } from "ai";
 
 import { parseChatRequest } from "~/app/api/chat/request";
@@ -18,7 +19,14 @@ export async function POST(req: Request) {
   if (!parsed.ok) return new Response(parsed.error, { status: 400 });
 
   const { message, threadId } = parsed.request;
-  await assertThreadOwner(threadId, userId);
+  try {
+    await assertThreadOwner(threadId, userId);
+  } catch (error) {
+    if (error instanceof TRPCError && error.code === "NOT_FOUND") {
+      return new Response("Not found", { status: 404 });
+    }
+    throw error;
+  }
 
   const stream = await handleChatStream({
     mastra,

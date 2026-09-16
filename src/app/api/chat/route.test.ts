@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TRPCError } from "@trpc/server";
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
@@ -82,6 +83,17 @@ describe("POST /api/chat", () => {
 
     expect(response.status).toBe(401);
     expect(mocks.assertThreadOwner).not.toHaveBeenCalled();
+    expect(mocks.handleChatStream).not.toHaveBeenCalled();
+  });
+
+  it("returns not found for a thread owned by another user", async () => {
+    mocks.assertThreadOwner.mockRejectedValue(
+      new TRPCError({ code: "NOT_FOUND" }),
+    );
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(404);
     expect(mocks.handleChatStream).not.toHaveBeenCalled();
   });
 });

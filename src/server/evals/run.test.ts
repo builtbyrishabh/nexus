@@ -70,6 +70,34 @@ describe("runEvalSuite", () => {
       { maxSteps: 30 },
     );
     expect(results[0]?.citations).toEqual([citation]);
+    expect(results[0]?.citationsValid).toBe(true);
     expect(results.map((result) => result.refused)).toEqual([false, true]);
+  });
+
+  it("fails the run when an answer cites evidence that was not returned", async () => {
+    mocks.generate.mockResolvedValue({
+      text: "A grounded-sounding answer [cite:missing].",
+      toolResults: [
+        {
+          payload: {
+            toolName: "searchCreatorCatalog",
+            result: { evidence: [citation] },
+          },
+        },
+      ],
+    });
+    mocks.assessUnsupportedAnswer.mockResolvedValue(false);
+
+    const { results, summary } = await runEvalSuite({
+      concurrency: 1,
+      cases: [
+        { id: "bad-citation", query: "answerable" },
+        { id: "refusal", query: "unsupported", expectRefusal: true },
+      ],
+    });
+
+    expect(results[0]?.citationsValid).toBe(false);
+    expect(summary.failures).toContain("citationAccuracy");
+    expect(summary.passed).toBe(false);
   });
 });

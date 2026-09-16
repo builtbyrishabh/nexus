@@ -155,8 +155,8 @@ async function expandNeighbors(
  * The retrieval deep module — one stable contract; the pipeline is hidden inside.
  *
  * Internals: dense (pgvector cosine) + sparse (tsv/BM25) each retrieve a top-20 pool, fused by
- * RRF (k=60) into one ranking. When reranking is on (Slice 2), the fused top-20 is scored by a
- * cross-encoder and cut to top-K, then widened with their ±1 neighbors. Reranking is the only
+ * RRF (k=60) into one ranking. The fused top-20 is scored by a cross-encoder and cut to top-K,
+ * then widened with its ±1 neighbors. Reranking is the only
  * production mode and provider failures propagate to the caller. Evidence.score carries the
  * reranker's relevance score.
  */

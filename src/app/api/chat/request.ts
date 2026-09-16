@@ -25,18 +25,29 @@ export async function parseChatRequest(body: unknown): Promise<ParseResult> {
   if (!validated.success) return { ok: false, error: "Malformed message" };
 
   const message = validated.data[0];
+  if (!message || message.role !== "user") {
+    return { ok: false, error: "The request must contain a user text message" };
+  }
+
+  const textParts = message.parts.flatMap((part) =>
+    part.type === "text" ? [{ type: "text" as const, text: part.text }] : [],
+  );
   if (
-    !message ||
-    message.role !== "user" ||
-    !message.parts.some(
-      (part) => part.type === "text" && part.text.trim().length > 0,
-    )
+    textParts.length !== message.parts.length ||
+    !textParts.some((part) => part.text.trim().length > 0)
   ) {
     return { ok: false, error: "The request must contain a user text message" };
   }
 
   return {
     ok: true,
-    request: { message, threadId: parsed.data.threadId },
+    request: {
+      message: {
+        id: message.id,
+        role: "user",
+        parts: textParts,
+      },
+      threadId: parsed.data.threadId,
+    },
   };
 }

@@ -39,6 +39,18 @@ function catalogEvidence(toolResults: ToolResult[]): CatalogEvidence[] {
   return evidence;
 }
 
+/** Every answerable case must cite at least one returned evidence ID, and only returned IDs. */
+export function citationsMatchEvidence(
+  answer: string,
+  evidence: CatalogEvidence[],
+): boolean {
+  const citedIds = [...answer.matchAll(/\[cite:([^\]\s]+)\]/g)].map(
+    (match) => match[1]!,
+  );
+  const evidenceIds = new Set(evidence.map((item) => item.citationId));
+  return citedIds.length > 0 && citedIds.every((id) => evidenceIds.has(id));
+}
+
 /** Run one golden case through the registered production agent and its real tool loop. */
 async function runCase(testCase: GoldenCase): Promise<CaseResult> {
   const messages: ModelMessage[] = [
@@ -49,6 +61,7 @@ async function runCase(testCase: GoldenCase): Promise<CaseResult> {
     maxSteps: NEXUS_MAX_STEPS,
   });
   const evidence = catalogEvidence(output.toolResults);
+  const citationsValid = citationsMatchEvidence(output.text, evidence);
   const refused = await assessUnsupportedAnswer({
     query: testCase.query,
     answer: output.text,
@@ -71,6 +84,7 @@ async function runCase(testCase: GoldenCase): Promise<CaseResult> {
     scores,
     answer: output.text,
     citations: evidence,
+    citationsValid,
   };
 }
 

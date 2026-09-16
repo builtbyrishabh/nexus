@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryState } from "nuqs";
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useState } from "react";
 
 import { ChatConversation } from "~/app/_components/chat-conversation";
 import { PromptBox } from "~/app/_components/prompt-box";
@@ -22,17 +22,14 @@ function ChatsHarness() {
 
   // A thread id minted up front so a brand-new chat has a stable id before its first turn persists.
   const [draftThreadId, setDraftThreadId] = useState(newThreadId);
-  // Threads created this session start empty and skip the history fetch (they're seeded).
-  const recentlyCreatedRef = useRef(new Set<string>());
   const [committedSeed, setCommittedSeed] = useState<{
     threadId: string;
     text: string;
   } | null>(null);
 
-  const isFresh = activeId ? recentlyCreatedRef.current.has(activeId) : false;
   const messagesQuery = api.chats.messages.useQuery(
     { threadId: activeId ?? "" },
-    { enabled: Boolean(activeId) && !isFresh },
+    { enabled: Boolean(activeId) },
   );
 
   function startChat(text: string) {
@@ -40,8 +37,6 @@ function ChatsHarness() {
     // Set the seed synchronously, before the `?id=` flip, so the conversation renders with it on
     // the first frame — no gap.
     setCommittedSeed({ threadId, text });
-    recentlyCreatedRef.current.add(threadId);
-
     const now = new Date();
     utils.chats.list.setData(undefined, (prev) => [
       {
@@ -83,7 +78,7 @@ function ChatsHarness() {
   const seedForActive =
     committedSeed?.threadId === activeId ? committedSeed.text : null;
 
-  if (!isFresh && messagesQuery.isLoading) {
+  if (messagesQuery.isLoading) {
     return <ChatSkeleton />;
   }
 
@@ -91,7 +86,7 @@ function ChatsHarness() {
     <ChatConversation
       key={activeId}
       threadId={activeId}
-      initialMessages={isFresh ? [] : (messagesQuery.data ?? [])}
+      initialMessages={messagesQuery.data ?? []}
       seed={seedForActive}
     />
   );

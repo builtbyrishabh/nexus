@@ -26,7 +26,9 @@ export function mapRanking(
  * refuses without a model call — deterministic, where the prompt-level rule was a coin flip on
  * near-misses ("finance person" vs "CFO"). Calibrated on cohere/rerank-v3.5 against the golden set
  * (2026-09-07, 31 videos): off-topic refusals top out at 0.13, the CFO near-miss at 0.38, the
- * weakest answerable question at 0.53. Recalibrate if RERANK_MODEL changes.
+ * weakest answerable question at 0.53. Results below the floor return no evidence to the agent,
+ * which can reformulate, clarify, or explain that the catalog does not support the claim.
+ * Recalibrate if RERANK_MODEL changes.
  */
 export const MIN_RERANK_SCORE = 0.45;
 

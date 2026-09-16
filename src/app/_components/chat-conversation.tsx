@@ -42,6 +42,7 @@ export function ChatConversation({
       }),
     }),
     onFinish: () => {
+      void utils.chats.messages.invalidate({ threadId });
       // First reply of a fresh thread: it now exists + has a title, so refresh the sidebar.
       if (!hadHistoryRef.current) {
         hadHistoryRef.current = true;
@@ -52,7 +53,7 @@ export function ChatConversation({
 
   const sentSeedRef = useRef(false);
   useEffect(() => {
-    if (sentSeedRef.current || !seed) return;
+    if (sentSeedRef.current || !seed || initialMessages.length > 0) return;
     sentSeedRef.current = true;
     void sendMessage({ text: seed });
     // Only ever fires once per mounted thread.

@@ -11,6 +11,7 @@ const row = (label: string, value: string) =>
 function printSummary(summary: EvalSummary): void {
   for (const axis of AXES) row(axis.label, pct(summary.means[axis.key]));
   row("refusal accuracy", pct(summary.refusalAccuracy));
+  row("citation accuracy", pct(summary.citationAccuracy));
   console.log(
     `  graded ${summary.scored}/${summary.total} · ${summary.passed ? "PASS ✓" : `FAIL ✗ (${summary.failures.join(", ")})`}`,
   );

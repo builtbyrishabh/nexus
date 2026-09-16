@@ -19,7 +19,7 @@ React useChat
     -> React citation renderer
 ```
 
-The client sends the newest `UIMessage` and a client-minted UUID thread ID. The server never accepts a user ID from the browser. It derives the authenticated resource ID from Clerk and verifies ownership before running the agent.
+The client sends the newest `UIMessage` and a client-minted UUID thread ID. The server accepts only its text content and ID, stripping client metadata and rejecting tool parts before forwarding a native `UIMessage`. It never accepts a user ID from the browser: the authenticated resource ID comes from Clerk, and existing thread ownership is verified before the agent runs.
 
 The route does not recall history, assemble model messages, control tool phases, translate stream events, or persist turns. Mastra memory and `handleChatStream` own those responsibilities.
 
@@ -94,7 +94,7 @@ The query path never performs ingestion work. Transcript provenance and content 
 
 `pnpm eval` calls the registered production agent with the same tool and 30-step limit used by chat. It reads evidence from the agent's structured tool results and runs Mastra's faithfulness, answer relevancy, and context precision scorers.
 
-Unsupported-answer behavior is judged semantically. The eval checks whether the answer declined to make an unsupported catalog claim; it does not compare against a required sentence.
+Unsupported-answer behavior is judged semantically. The eval checks whether the answer declined to make an unsupported catalog claim; it does not compare against a required sentence. Answerable cases must also emit at least one citation marker, and every marker must resolve to evidence returned by the production tool.
 
 ## Custom code we keep
 

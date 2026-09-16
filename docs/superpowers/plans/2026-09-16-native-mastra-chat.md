@@ -215,12 +215,13 @@ git commit -m "refactor(chat): use native Mastra memory"
 
 - [x] **Step 1: Write the failing request-boundary tests**
 
-Update request tests to require a UUID thread ID and preserve the complete latest user `UIMessage`, including its ID and text part. Add rejection cases for:
+Update request tests to require a UUID thread ID and preserve the latest user's ID and text in a native `UIMessage`. Add rejection cases for:
 
 - a missing or invalid thread ID;
 - an assistant message;
 - a user message without any text content;
-- malformed UI-message parts.
+- malformed UI-message parts;
+- client-authored tool parts.
 
 The parser should return:
 
@@ -243,7 +244,7 @@ Expected: FAIL because the current parser returns `{ query, threadId, userMessag
 
 - [x] **Step 2: Parse the transport envelope and native message**
 
-Use Zod for the outer request envelope and AI SDK `safeValidateUIMessages` for the contained message. Validate exactly one latest message, require `role === "user"`, and require at least one non-empty text part. Keep the validated `UIMessage` intact.
+Use Zod for the outer request envelope and AI SDK `safeValidateUIMessages` for the contained message. Validate exactly one latest message, require `role === "user"`, and accept only text parts with at least one non-empty value. Build the native `UIMessage` from its ID and text alone so client metadata, provider options, and tool results cannot cross the server trust boundary.
 
 Do not reconstruct a `ModelMessage` or create a second chat request DTO.
 

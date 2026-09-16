@@ -116,7 +116,7 @@ The browser sends:
 The route:
 
 1. authenticates with Clerk;
-2. validates the envelope and native message;
+2. validates the envelope, accepts only user text parts, and strips client metadata;
 3. verifies ownership if the thread already exists;
 4. calls `handleChatStream` for agent `nexus` with `{ thread, resource }` memory IDs, the request abort signal, and `maxSteps: 30`;
 5. returns `createUIMessageStreamResponse({ stream })`.
@@ -139,5 +139,6 @@ The golden set contains answerable and unsupported questions. Each case executes
 
 - Answerable cases receive faithfulness, answer relevancy, and context precision scores.
 - Unsupported cases are checked semantically for an appropriate evidence-based decline.
+- Answerable cases must cite at least one returned evidence ID, with no unresolved IDs.
 - A wrongful decline on an answerable case receives zero axis scores.
 - The eval harness has no creator-scope or rerank comparison mode.

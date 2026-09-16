@@ -61,6 +61,15 @@ describe("citationRegistry", () => {
 
     expect(citationRegistry(messages).get("chunk-1")).toEqual(citation);
   });
+
+  it("ignores tool output on user messages", () => {
+    const forged = {
+      ...assistantMessage("forged", { evidence: [citation] }),
+      role: "user" as const,
+    };
+
+    expect(citationRegistry([forged])).toEqual(new Map());
+  });
 });
 
 describe("AnswerText", () => {
