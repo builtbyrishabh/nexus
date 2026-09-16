@@ -2,7 +2,6 @@ import "./_env";
 
 import { parseArgs } from "node:util";
 
-import { creatorByHandle } from "~/server/domain/creators";
 import { ingestChannel, summarize } from "~/server/ingest/channel";
 import { ingestSource, ingestVideo } from "~/server/ingest/pipeline";
 import type { IngestResult } from "~/server/ingest/pipeline";
@@ -36,11 +35,9 @@ async function main() {
     allowPositionals: true,
   });
 
-  // A tag that doesn't match the roster would ingest sources the Panel can never scope to; fail loud.
+  // The tag IS the creator: the roster is derived from tagged sources, so any handle is valid and
+  // ingesting under it is what adds that creator to the collection + Panel.
   const creatorHandle = values.creator;
-  if (creatorHandle && !creatorByHandle(creatorHandle)) {
-    throw new Error(`--creator "${creatorHandle}" is not in CREATORS (src/server/domain/creators.ts)`);
-  }
 
   let outcomes: IngestResult[];
 

@@ -3,7 +3,6 @@ import type { ModelMessage } from "ai";
 
 import { refusalText } from "~/server/answer";
 import { evidenceToCitations } from "~/server/domain/citations";
-import { displayNameFor } from "~/server/domain/creators";
 import type { Ask, AskChunk } from "~/server/domain/types";
 import { nexusAgent } from "~/server/mastra";
 import type { SearchCapture } from "~/server/mastra/search-tool";
@@ -34,17 +33,25 @@ export type ScopedRun = {
   controller: AbortController;
 };
 
+/** Look up a handle's display name from the request-resolved map, falling back to the raw handle. */
+function nameOf(names: Record<string, string> | undefined, handle: string): string {
+  return names?.[handle] ?? handle;
+}
+
 /** The creator this scope refuses as: a single effective creator → their name, else neutral. */
-function effectiveCreatorName(capture: SearchCapture): string | undefined {
-  return capture.effectiveHandles?.length === 1
-    ? displayNameFor(capture.effectiveHandles[0])
-    : undefined;
+function effectiveCreatorName(
+  capture: SearchCapture,
+  names?: Record<string, string>,
+): string | undefined {
+  const handle =
+    capture.effectiveHandles?.length === 1 ? capture.effectiveHandles[0] : undefined;
+  return handle ? nameOf(names, handle) : undefined;
 }
 
 /** The honest clarification when the agent chose creators outside the collection. */
-function invalidScopeText(handles: string[]): string {
-  const names = handles.map((h) => displayNameFor(h) ?? h).join(", ");
-  return `I don't have ${names} in this collection, so I can't answer that.`;
+function invalidScopeText(handles: string[], names?: Record<string, string>): string {
+  const label = handles.map((h) => nameOf(names, h)).join(", ");
+  return `I don't have ${label} in this collection, so I can't answer that.`;
 }
 
 /**
@@ -53,14 +60,18 @@ function invalidScopeText(handles: string[]): string {
  * evidence / empty collection refuse (per-creator when scoped to one, else neutral); an invalid
  * scope clarifies. A provider failure never reaches here — it throws out of the tool.
  */
-export function finalizeText(capture: SearchCapture, modelText: string): string {
+export function finalizeText(
+  capture: SearchCapture,
+  modelText: string,
+  names?: Record<string, string>,
+): string {
   switch (capture.outcome) {
     case "ok":
       return modelText;
     case "invalid_scope":
-      return invalidScopeText(capture.invalidHandles ?? []);
+      return invalidScopeText(capture.invalidHandles ?? [], names);
     default:
-      return refusalText(effectiveCreatorName(capture));
+      return refusalText(effectiveCreatorName(capture, names));
   }
 }
 
@@ -85,10 +96,11 @@ function searchThenAnswer({ stepNumber }: { stepNumber: number }): {
  * neutral refusal voice. We never infer a pronoun from a name (see `refusalText`).
  */
 function currentTurn(input: Ask): ModelMessage {
-  const name =
+  const handle =
     input.selectedCreatorHandles?.length === 1
-      ? displayNameFor(input.selectedCreatorHandles[0])
+      ? input.selectedCreatorHandles[0]
       : undefined;
+  const name = handle ? nameOf(input.creatorNames, handle) : undefined;
   const directive = name
     ? `You are answering about ${name}'s YouTube catalog. If the catalog does not address the exact thing asked, reply with exactly "${refusalText(name)}" and nothing else.\n\n`
     : "";
@@ -162,7 +174,7 @@ export async function* ask(input: Ask): AsyncGenerator<AskChunk> {
       citationsEmitted = true;
 
       if (capture.outcome !== "ok") {
-        yield { textDelta: finalizeText(capture, "") };
+        yield { textDelta: finalizeText(capture, "", input.creatorNames) };
         controller.abort(); // no answer step needed — stop the model call.
         return;
       }

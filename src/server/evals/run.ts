@@ -1,7 +1,7 @@
 import { isRefusal } from "~/server/answer";
 import { buildScopedRun, finalizeText } from "~/server/ask";
 import { evidenceText, evidenceToCitations } from "~/server/domain/citations";
-import { DEFAULT_COLLECTION, displayNameFor } from "~/server/domain/creators";
+import { creatorNameMap, listCreators } from "~/server/domain/roster";
 import { GOLDEN_SET, validateGolden, type GoldenCase } from "~/server/evals/golden";
 import { scoreAnswer } from "~/server/evals/score";
 import { summarize, type CaseResult, type EvalSummary } from "~/server/evals/summary";
@@ -18,8 +18,12 @@ const ZERO_SCORES = {
 } as const;
 
 /** The creator a scoped case refuses as (single selection → their name), for the refusal check. */
-function caseCreatorName(c: GoldenCase): string | undefined {
-  return c.selected?.length === 1 ? displayNameFor(c.selected[0]) : undefined;
+function caseCreatorName(
+  c: GoldenCase,
+  names: Record<string, string>,
+): string | undefined {
+  const handle = c.selected?.length === 1 ? c.selected[0] : undefined;
+  return handle ? names[handle] : undefined;
 }
 
 /**
@@ -34,22 +38,28 @@ function caseCreatorName(c: GoldenCase): string | undefined {
  * answered, all-zero when it wrongly refused — so a wrongful refusal counts against the means
  * instead of quietly dropping out of them (see summary.ts).
  */
-async function runCase(c: GoldenCase, rerank: boolean): Promise<CaseResult> {
+async function runCase(
+  c: GoldenCase,
+  rerank: boolean,
+  collection: string[],
+  names: Record<string, string>,
+): Promise<CaseResult> {
   const run = buildScopedRun({
     query: c.query,
     channel: "web",
     userId: "eval",
     threadId: "eval",
-    collectionCreatorHandles: c.collection ?? [...DEFAULT_COLLECTION],
+    collectionCreatorHandles: c.collection ?? collection,
+    creatorNames: names,
     selectedCreatorHandles: c.selected,
     history: c.history,
     rerank,
   });
   const { text } = await nexusAgent.generate(run.messages, run.options);
-  const answer = finalizeText(run.capture, text);
+  const answer = finalizeText(run.capture, text, names);
   const evidence = run.capture.evidence ?? [];
 
-  const refused = isRefusal(answer, caseCreatorName(c));
+  const refused = isRefusal(answer, caseCreatorName(c, names));
   const scores = c.expectRefusal
     ? undefined
     : refused
@@ -85,8 +95,13 @@ export async function runEvalSuite(opts?: {
   validateGolden(cases);
   const rerank = opts?.rerank ?? env.RERANK_ENABLED;
 
+  // Resolve the roster once: the default collection + handle→name map every case shares.
+  const creators = await listCreators();
+  const collection = creators.map((c) => c.handle);
+  const names = creatorNameMap(creators);
+
   const results = await mapPool(cases, opts?.concurrency ?? CASE_CONCURRENCY, (c) =>
-    runCase(c, rerank),
+    runCase(c, rerank, collection, names),
   );
   return { results, summary: summarize(results) };
 }

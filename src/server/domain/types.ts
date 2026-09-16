@@ -140,6 +140,12 @@ export type Ask = {
    */
   selectedCreatorHandles?: string[];
   /**
+   * handle → display name for the creators in scope, resolved at the request boundary (override →
+   * channel author → handle). Lets the streaming path name a single-creator refusal without its own
+   * DB lookup, keeping `ask()` free of a data-layer dependency.
+   */
+  creatorNames?: Record<string, string>;
+  /**
    * Prior turns of this conversation, oldest→newest, so the model can resolve references like
    * "the second one" across turns. Supplied by the caller: the main chat recalls it from the
    * store (keyed by threadId), the Panel carries it up from the client (ephemeral). Absent =

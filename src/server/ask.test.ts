@@ -52,6 +52,8 @@ const baseInput = {
   userId: "u",
   threadId: "t",
   collectionCreatorHandles: ["hormozi"],
+  // Resolved at the request boundary (override → author → handle); the route/eval supply this map.
+  creatorNames: { hormozi: "Alex Hormozi", naval: "Naval Ravikant" },
 };
 
 describe("ask() orchestration", () => {

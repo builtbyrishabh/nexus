@@ -6,7 +6,7 @@ import {
 
 import { ask } from "~/server/ask";
 import { persistTurn, recallModelMessages } from "~/server/chat/threads";
-import { DEFAULT_COLLECTION } from "~/server/domain/creators";
+import { creatorNameMap, listCreators } from "~/server/domain/roster";
 import { unknownHandles } from "~/server/domain/scope";
 import type { Citation, HistoryMessage } from "~/server/domain/types";
 import type { NexusUIMessage } from "~/server/domain/ui";
@@ -56,10 +56,13 @@ export async function POST(req: Request) {
     ? textOfMessage(message)
     : textOfMessage(messages?.[messages.length - 1]);
 
-  // Server-owned scope. Collection = the configured default roster (saved interests come later).
+  // Server-owned scope. Collection = every creator actually ingested (derived from `source`, so a
+  // newly ingested creator is searchable with no code change; saved per-user interests come later).
   // A Panel column pins one creator as the user's explicit selection; validate it against the
   // collection here so an unknown/out-of-collection handle is rejected, never silently broadened.
-  const collectionCreatorHandles = [...DEFAULT_COLLECTION];
+  const creators = await listCreators();
+  const collectionCreatorHandles = creators.map((c) => c.handle);
+  const creatorNames = creatorNameMap(creators);
   let selectedCreatorHandles: string[] | undefined;
   if (creatorHandle) {
     const bad = unknownHandles([creatorHandle], collectionCreatorHandles);
@@ -96,7 +99,8 @@ export async function POST(req: Request) {
         channel: "web",
         userId,
         threadId: threadId ?? `web:${userId}`,
-        collectionCreatorHandles, // the searchable roster (server-owned)
+        collectionCreatorHandles, // the searchable roster (server-owned, from ingested sources)
+        creatorNames, // handle → display name, for single-creator refusal wording
         selectedCreatorHandles, // set per column on /panel; absent on the main chat
         history, // recalled (main chat) or client-supplied (panel); empty = single-turn
         signal: req.signal, // client disconnect cancels generation
