@@ -2,14 +2,14 @@ import { sql, type SQL } from "drizzle-orm";
 
 import { db } from "~/server/db";
 import { chunk, source } from "~/server/db/schema";
-import type { Evidence, Filter } from "~/server/domain/types";
+import type { Evidence } from "~/server/domain/types";
 import { embedQuery } from "~/server/ingest/embed";
 import {
   mergeNeighborText,
   neighborCoords,
   neighborKey,
 } from "~/server/retrieval/neighbors";
-import { RERANK_DEFAULT, rerankDocuments } from "~/server/retrieval/rerank";
+import { rerankDocuments } from "~/server/retrieval/rerank";
 import { rrfFuse } from "~/server/retrieval/rrf";
 
 // Canonical settings (docs/ARCHITECTURE.md): each retriever returns a top-20 candidate pool;
@@ -38,43 +38,11 @@ type HydratedRow = {
  */
 const uuidArray = (ids: string[]): SQL => sql`${sql.param(ids)}::uuid[]`;
 
-/** Bind a JS string array as ONE Postgres `text[]` parameter (same reasoning as `uuidArray`). */
-const textArray = (values: string[]): SQL => sql`${sql.param(values)}::text[]`;
-
-/**
- * Public boundary → parameterized only. `Filter` values arrive from callers, so every id/kind
- * binds as a placeholder (the uuid/enum columns validate them); nothing is ever interpolated
- * into SQL text. Built once here and shared by both retrievers so the two searches can never
- * drift out of agreement on what "in scope" means.
- */
-function filterConditions(filter?: Filter): SQL[] {
-  const conditions: SQL[] = [];
-  const sourceIds = filter?.sourceIds;
-  if (sourceIds && sourceIds.length > 0) {
-    conditions.push(sql`c.source_id = ANY(${uuidArray(sourceIds)})`);
-  }
-  if (filter?.kind) conditions.push(sql`s.kind = ${filter.kind}`);
-  const handles = filter?.creatorHandles;
-  if (handles && handles.length > 0) {
-    conditions.push(sql`s.creator_handle = ANY(${textArray(handles)})`);
-  }
-  return conditions;
-}
-
-/** `WHERE a AND b AND …`, or empty when there is nothing to constrain. */
-function whereClause(conditions: SQL[]): SQL {
-  return conditions.length > 0
-    ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
-    : sql``;
-}
-
 /** Dense retriever: pgvector cosine nearest-neighbors (HNSW). Returns chunk ids, best first. */
-async function denseSearch(qvec: string, conditions: SQL[]): Promise<string[]> {
+async function denseSearch(qvec: string): Promise<string[]> {
   const rows = (await db.execute(sql`
     SELECT c.id AS id
     FROM ${chunk} c
-    JOIN ${source} s ON s.id = c.source_id
-    ${whereClause(conditions)}
     ORDER BY c.embedding <=> ${qvec}::vector
     LIMIT ${CANDIDATE_K}
   `)) as unknown as { id: string }[];
@@ -87,13 +55,12 @@ async function denseSearch(qvec: string, conditions: SQL[]): Promise<string[]> {
  * phrases, OR, `-negation` — safely, and yields no rows for an empty/stopword-only query, which
  * RRF then simply treats as a missing list. This is what dense misses: exact names and jargon.
  */
-async function sparseSearch(query: string, conditions: SQL[]): Promise<string[]> {
+async function sparseSearch(query: string): Promise<string[]> {
   const rows = (await db.execute(sql`
     SELECT c.id AS id
     FROM ${chunk} c
-    JOIN ${source} s ON s.id = c.source_id
     CROSS JOIN websearch_to_tsquery('english', ${query}) AS q
-    ${whereClause([sql`c.tsv @@ q`, ...conditions])}
+    WHERE c.tsv @@ q
     ORDER BY ts_rank_cd(c.tsv, q) DESC
     LIMIT ${CANDIDATE_K}
   `)) as unknown as { id: string }[];
@@ -188,63 +155,45 @@ async function expandNeighbors(
  * The retrieval deep module — one stable contract; the pipeline is hidden inside.
  *
  * Internals: dense (pgvector cosine) + sparse (tsv/BM25) each retrieve a top-20 pool, fused by
- * RRF (k=60) into one ranking. When reranking is on (Slice 2), the fused top-20 is scored by a
- * cross-encoder and cut to top-K; otherwise the fused top-K stands. Either way the survivors are
- * widened with their ±1 neighbors. Rerank defaults to `RERANK_DEFAULT` (best-effort: a provider
- * failure falls back to the fused order) and is overridable per-call so the eval harness can
- * measure its lift (strict: an explicit `rerank: true` propagates provider failures). Evidence.score carries the ranker's score
- * (rerank relevance when reranked, fused RRF score otherwise). Callers never see the difference.
+ * RRF (k=60) into one ranking. The fused top-20 is scored by a cross-encoder and cut to top-K,
+ * then widened with its ±1 neighbors. Reranking is the only
+ * production mode and provider failures propagate to the caller. Evidence.score carries the
+ * reranker's relevance score.
  */
 export async function retrieve(
   query: string,
-  opts?: { topK?: number; filter?: Filter; rerank?: boolean },
+  opts?: { topK?: number },
 ): Promise<Evidence[]> {
   const topK = opts?.topK ?? 5;
-  // An explicit `rerank` is a request for that pipeline; only the env default is best-effort.
-  const rerankExplicit = opts?.rerank !== undefined;
-  const useRerank = opts?.rerank ?? RERANK_DEFAULT;
-  const conditions = filterConditions(opts?.filter);
 
   // Only dense needs the embedding; start it, then overlap the round trip with the sparse search
   // instead of paying its latency serially in front of both retrievers.
   const qvecP = embedQuery(query).then((v) => `[${v.join(",")}]`);
   const [dense, sparse] = await Promise.all([
-    qvecP.then((qvec) => denseSearch(qvec, conditions)),
-    sparseSearch(query, conditions),
+    qvecP.then(denseSearch),
+    sparseSearch(query),
   ]);
 
   const fused = rrfFuse([dense, sparse], { k: RRF_K });
 
-  // Hydrate exactly the rows we will use: the fused candidate pool when reranking (the reranker
-  // reads candidate text), else the fused top-K. `pool` is the one hydration contract — the
-  // reranker's input and the fallback both derive from it, so there is no second lookup pass.
-  const poolIds = fused.slice(0, useRerank ? CANDIDATE_K : topK).map((f) => f.id);
+  const poolIds = fused.slice(0, CANDIDATE_K).map((f) => f.id);
   const byId = await hydrate(poolIds);
   const pool = poolIds.flatMap((id) => {
     const row = byId.get(id);
     return row ? [{ id, row }] : [];
   });
 
-  // Rerank is a ranking *improvement*, never a dependency of the answer path: when it is on by
-  // env default and the provider errors (quota, outage), fall back to the fused top-K so the user
-  // still gets the Slice-1 answer — loudly, so a misconfigured reranker is visible in the logs.
-  // A caller that asked for `rerank: true` explicitly (the eval measuring its lift) gets the
-  // error instead: silently grading the baseline as "rerank on" would report a lift that was
-  // never measured.
   // The reranker scores the same `context + "\n" + text` string that was embedded (the locked
   // storage rule): the blurb is what ties "Caleb's 90-day results" to a chunk that only says
   // "so what is it now?". Measured on raw text alone it promoted intro chunks and lost every axis.
-  const ranked: { id: string; score: number }[] = useRerank
-    ? await rerankDocuments(
-        query,
-        pool.map((p) => ({ id: p.id, text: `${p.row.context_text}\n${p.row.text}` })),
-        topK,
-      ).catch((err: unknown) => {
-        if (rerankExplicit) throw err;
-        console.warn("[retrieve] rerank failed; falling back to fused top-K", err);
-        return fused.slice(0, topK);
-      })
-    : fused.slice(0, topK);
+  const ranked = await rerankDocuments(
+    query,
+    pool.map((item) => ({
+      id: item.id,
+      text: `${item.row.context_text}\n${item.row.text}`,
+    })),
+    topK,
+  );
 
   const hits = ranked.flatMap(({ id, score }) => {
     const row = byId.get(id);
