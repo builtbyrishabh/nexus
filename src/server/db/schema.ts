@@ -44,8 +44,10 @@ export const source = createTable(
     title: text("title").notNull(),
     url: text("url").notNull(),
     author: text("author"), // channel name (free-text, as the platform reports it)
-    // Stable creator slug retained as source metadata. Chat retrieval currently searches the
-    // complete ingested catalog.
+    // Creator tenancy seam: a stable slug, e.g. "hormozi", that scopes retrieval to a creator's
+    // catalog. Deliberately NOT a table — the display name and roster live in a code constant
+    // (src/server/domain/creators.ts); when per-tenant config rows are needed, this promotes to a
+    // FK then (ETC).
     creatorHandle: text("creator_handle"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     contentHash: text("content_hash").notNull(), // idempotent re-ingest

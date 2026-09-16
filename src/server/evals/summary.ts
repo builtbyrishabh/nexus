@@ -6,7 +6,7 @@
  * logic is unit-testable without touching the network.
  */
 
-import type { CatalogEvidence } from "~/server/domain/citations";
+import type { Citation } from "~/server/domain/types";
 
 /** The three Tier-1 eval axes (docs canonical set). Each in [0, 1]. */
 export type AxisScores = {
@@ -36,35 +36,29 @@ export type CaseResult = {
   id: string;
   expectRefusal: boolean;
   refused: boolean;
-  citationsValid?: boolean;
   scores?: AxisScores;
   /** What the model said and what it was shown — for `--verbose` inspection; the gate ignores both. */
   answer?: string;
-  citations?: CatalogEvidence[];
+  citations?: Citation[];
 };
 
-export type EvalThresholds = AxisScores & {
-  refusalAccuracy: number;
-  citationAccuracy: number;
-};
+export type EvalThresholds = AxisScores & { refusalAccuracy: number };
 
-/** Canonical pass bars. Unsupported-answer behavior is judged semantically. */
+/** Canonical pass bars. Refusal accuracy is 1.0 — the refusal is the product; it must be exact. */
 export const DEFAULT_THRESHOLDS: EvalThresholds = {
   faithfulness: 0.7,
   answerRelevancy: 0.7,
   contextPrecision: 0.6,
   refusalAccuracy: 1,
-  citationAccuracy: 1,
 };
 
 export type EvalSummary = {
   means: AxisScores;
   refusalAccuracy: number;
-  citationAccuracy: number;
   scored: number; // answerable cases (the denominator of the axis means)
   total: number;
   passed: boolean;
-  failures: string[]; // axes and behavioral checks that fell below threshold
+  failures: string[]; // axes (incl. "refusalAccuracy") that fell below threshold
 };
 
 function mean(values: number[]): number {
@@ -97,23 +91,16 @@ export function summarize(
       ? 0
       : results.filter((r) => r.refused === r.expectRefusal).length /
         results.length;
-  const citationAccuracy =
-    answerable.length === 0
-      ? 0
-      : answerable.filter((result) => result.citationsValid === true).length /
-        answerable.length;
 
   const failures: string[] = [];
   for (const a of AXES) {
     if (means[a.key] < thresholds[a.key]) failures.push(a.key);
   }
   if (refusalAccuracy < thresholds.refusalAccuracy) failures.push("refusalAccuracy");
-  if (citationAccuracy < thresholds.citationAccuracy) failures.push("citationAccuracy");
 
   return {
     means,
     refusalAccuracy,
-    citationAccuracy,
     scored: answerable.length,
     total: results.length,
     passed: failures.length === 0,

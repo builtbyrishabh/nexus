@@ -1,21 +1,14 @@
-import type { ModelMessage } from "ai";
 import pMap from "p-map";
 
-import {
-  catalogSearchResultSchema,
-  type CatalogEvidence,
-} from "~/server/domain/citations";
+import { isRefusal } from "~/server/answer";
+import { buildScopedRun, finalizeText } from "~/server/ask";
+import { evidenceText, evidenceToCitations } from "~/server/domain/citations";
+import { creatorNameMap, listCreators } from "~/server/domain/roster";
 import { GOLDEN_SET, validateGolden, type GoldenCase } from "~/server/evals/golden";
-import {
-  assessUnsupportedAnswer,
-  scoreAnswer,
-} from "~/server/evals/score";
-import {
-  summarize,
-  type CaseResult,
-  type EvalSummary,
-} from "~/server/evals/summary";
-import { nexusAgent, NEXUS_MAX_STEPS } from "~/server/mastra";
+import { scoreAnswer } from "~/server/evals/score";
+import { summarize, type CaseResult, type EvalSummary } from "~/server/evals/summary";
+import { nexusAgent } from "~/server/mastra";
+import { RERANK_DEFAULT } from "~/server/retrieval/rerank";
 
 const CASE_CONCURRENCY = 3;
 
@@ -25,78 +18,78 @@ const ZERO_SCORES = {
   contextPrecision: 0,
 } as const;
 
-type ToolResult = {
-  payload: { toolName: string; result: unknown };
-};
-
-function catalogEvidence(toolResults: ToolResult[]): CatalogEvidence[] {
-  const evidence: CatalogEvidence[] = [];
-  for (const toolResult of toolResults) {
-    if (toolResult.payload.toolName !== "searchCreatorCatalog") continue;
-    const parsed = catalogSearchResultSchema.safeParse(toolResult.payload.result);
-    if (parsed.success) evidence.push(...parsed.data.evidence);
-  }
-  return evidence;
-}
-
-/** Every answerable case must cite at least one returned evidence ID, and only returned IDs. */
-export function citationsMatchEvidence(
-  answer: string,
-  evidence: CatalogEvidence[],
-): boolean {
-  const citedIds = [...answer.matchAll(/\[cite:([^\]\s]+)\]/g)].map(
-    (match) => match[1]!,
-  );
-  const evidenceIds = new Set(evidence.map((item) => item.citationId));
-  return citedIds.length > 0 && citedIds.every((id) => evidenceIds.has(id));
-}
-
-/** Run one golden case through the registered production agent and its real tool loop. */
-async function runCase(testCase: GoldenCase): Promise<CaseResult> {
-  const messages: ModelMessage[] = [
-    ...(testCase.history ?? []),
-    { role: "user", content: testCase.query },
-  ];
-  const output = await nexusAgent.generate(messages, {
-    maxSteps: NEXUS_MAX_STEPS,
+/**
+ * Run one golden case through the REAL production path: `buildScopedRun` + `finalizeText` are the
+ * exact orchestration `ask()` streams — same agent, same `searchCreatorCatalog` tool, same scope,
+ * same phase control — so the score reflects production, not a lookalike. The only difference is the
+ * finish: a blocking `generate` instead of a stream. Evidence for scoring comes off the tool's
+ * capture, i.e. exactly what the model was shown.
+ *
+ * Grading follows the case kind, not the model's choice: expected-refusal cases carry the decision
+ * only (`scores` absent); answerable cases are always scored — real judge scores when the model
+ * answered, all-zero when it wrongly refused — so a wrongful refusal counts against the means
+ * instead of quietly dropping out of them (see summary.ts).
+ */
+async function runCase(
+  c: GoldenCase,
+  rerank: boolean,
+  collection: string[],
+  names: Record<string, string>,
+): Promise<CaseResult> {
+  const run = buildScopedRun({
+    query: c.query,
+    collectionCreatorHandles: c.collection ?? collection,
+    creatorNames: names,
+    history: c.history,
+    rerank,
   });
-  const evidence = catalogEvidence(output.toolResults);
-  const citationsValid = citationsMatchEvidence(output.text, evidence);
-  const refused = await assessUnsupportedAnswer({
-    query: testCase.query,
-    answer: output.text,
-    contextTexts: evidence.map((item) => item.text),
-  });
-  const scores = testCase.expectRefusal
+  const { text } = await nexusAgent.generate(run.messages, run.options);
+  const answer = finalizeText(run.capture, text, names);
+  const evidence = run.capture.evidence ?? [];
+
+  const refused = isRefusal(answer);
+  const scores = c.expectRefusal
     ? undefined
     : refused
       ? ZERO_SCORES
       : await scoreAnswer({
-          query: testCase.query,
-          answer: output.text,
-          contextTexts: evidence.map((item) => item.text),
+          query: c.query,
+          answer,
+          contextTexts: evidence.map(evidenceText),
         });
 
   return {
-    id: testCase.id,
-    expectRefusal: !!testCase.expectRefusal,
+    id: c.id,
+    expectRefusal: !!c.expectRefusal,
     refused,
     scores,
-    answer: output.text,
-    citations: evidence,
-    citationsValid,
+    answer,
+    citations: evidenceToCitations(evidence),
   };
 }
 
-export async function runEvalSuite(options?: {
+/**
+ * Run the whole golden set and summarize. `rerank` selects the retrieval variant under test, so
+ * the caller can run the suite twice (off vs on) and read the lift off the two summaries — the
+ * measured-not-asserted story for the reranker (docs/DESIGN.md §7). Left unset it grades the
+ * product default (`RERANK_DEFAULT`), passed explicitly so a provider failure fails the run.
+ */
+export async function runEvalSuite(opts?: {
+  rerank?: boolean;
   cases?: GoldenCase[];
   concurrency?: number;
 }): Promise<{ results: CaseResult[]; summary: EvalSummary }> {
-  const cases = options?.cases ?? GOLDEN_SET;
+  const cases = opts?.cases ?? GOLDEN_SET;
   validateGolden(cases);
+  const rerank = opts?.rerank ?? RERANK_DEFAULT;
 
-  const results = await pMap(cases, runCase, {
-    concurrency: options?.concurrency ?? CASE_CONCURRENCY,
+  // Resolve the roster once: the default collection + handle→name map every case shares.
+  const creators = await listCreators();
+  const collection = creators.map((c) => c.handle);
+  const names = creatorNameMap(creators);
+
+  const results = await pMap(cases, (c) => runCase(c, rerank, collection, names), {
+    concurrency: opts?.concurrency ?? CASE_CONCURRENCY,
   });
   return { results, summary: summarize(results) };
 }
