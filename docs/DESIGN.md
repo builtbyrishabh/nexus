@@ -36,13 +36,14 @@ type Evidence = {
   context?: string;
   score: number;
   locator?: { startSec: number; endSec: number };
-  source: { title: string; url: string };
+  source: { title: string; url: string; author: string | null };
 };
 
 type CatalogEvidence = {
   citationId: string;
   text: string;
   title: string;
+  author?: string | null; // optional for citation payloads persisted before attribution shipped
   url: string;
   startSec?: number;
   timestamp?: string;
@@ -100,7 +101,9 @@ searchCreatorCatalog({ query }): Promise<{
 }>;
 ```
 
-The tool converts `Evidence.chunkId` to `CatalogEvidence.citationId`. This stable identifier replaces positional citation numbering.
+The tool converts `Evidence.chunkId` to `CatalogEvidence.citationId` and carries the source's
+stored author and title so the model can attribute the answer without inferring identity. The
+stable identifier replaces positional citation numbering.
 
 ## Chat HTTP boundary
 

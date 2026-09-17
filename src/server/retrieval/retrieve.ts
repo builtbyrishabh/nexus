@@ -28,6 +28,7 @@ type HydratedRow = {
   start_sec: number | null;
   end_sec: number | null;
   title: string;
+  author: string | null;
   url: string;
 };
 
@@ -80,6 +81,7 @@ async function hydrate(ids: string[]): Promise<Map<string, HydratedRow>> {
       c.start_sec AS start_sec,
       c.end_sec AS end_sec,
       s.title AS title,
+      s.author AS author,
       s.url AS url
     FROM ${chunk} c
     JOIN ${source} s ON s.id = c.source_id
@@ -101,7 +103,7 @@ function toEvidence(row: HydratedRow, score: number, text: string): Evidence {
       row.start_sec === null
         ? undefined
         : { startSec: row.start_sec, endSec: row.end_sec ?? row.start_sec },
-    source: { title: row.title, url: row.url },
+    source: { title: row.title, url: row.url, author: row.author },
   };
 }
 
