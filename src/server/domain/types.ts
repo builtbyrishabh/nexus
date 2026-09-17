@@ -75,6 +75,9 @@ export type Locator = {
 export type Evidence = {
   chunkId: string;
   sourceId: string;
+  /** Exact central chunk that the citation timestamp points to. */
+  excerpt: string;
+  /** Central chunk widened with neighbors for retrieval and answer generation. */
   text: string;
   /**
    * The Contextual-Retrieval blurb: who is speaking, about what, in which video. The raw

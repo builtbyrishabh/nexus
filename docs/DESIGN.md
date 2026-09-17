@@ -32,6 +32,7 @@ type Segment = {
 type Evidence = {
   chunkId: string;
   sourceId: string;
+  excerpt: string; // exact central chunk at the citation timestamp
   text: string;
   context?: string;
   score: number;
@@ -41,7 +42,9 @@ type Evidence = {
 
 type CatalogEvidence = {
   citationId: string;
-  text: string;
+  text: string; // model-ready context + source text
+  rawText?: string; // exact source text; absent on older persisted payloads
+  context?: string; // generated retrieval context
   title: string;
   author?: string | null; // optional for citation payloads persisted before attribution shipped
   url: string;
@@ -134,7 +137,12 @@ The model writes `[cite:<citationId>]` after the supported claim. The UI reads c
 ReadonlyMap<string, CatalogEvidence>
 ```
 
-The renderer resolves a marker through this map and displays `[mm:ss]` when a timestamp exists. An unresolved marker stays visible as plain text so a model error is observable.
+The renderer resolves a marker through this map and displays a compact per-answer citation number.
+An unresolved marker stays visible as plain text so a model error is observable. Each completed
+answer lists only its cited evidence in a Sources footer, deduplicated and grouped by video. Inline
+citations and footer moments open the same responsive source detail view: a right drawer on desktop
+and bottom sheet on mobile. The drawer displays `rawText` as the transcript quote, labels generated
+`context` separately, and links to the source timestamp.
 
 ## Evaluation contract
 

@@ -96,6 +96,7 @@ function toEvidence(row: HydratedRow, score: number, text: string): Evidence {
   return {
     chunkId: row.chunk_id,
     sourceId: row.source_id,
+    excerpt: row.text,
     text,
     context: row.context_text || undefined,
     score,
