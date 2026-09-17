@@ -28,8 +28,13 @@ The route does not recall history, assemble model messages, control tool phases,
 `nexusAgent` owns one system prompt, one model, one `Memory`, and one search tool.
 
 - Search is optional. Greetings and ordinary conversation can be answered directly.
-- Search is repeatable. The agent may call it as needed, up to 30 total steps.
+- The 30-step native loop remains available. Creator-catalog questions start with one focused
+  search, and the agent may make additional focused searches when they materially improve coverage
+  or resolve ambiguity. Ordinary conversation does not require search.
 - Catalog claims must come from returned evidence.
+- Answers lead with a concise synthesis by default instead of walking through evidence chunks.
+- Stored source author and title metadata let the model attribute a view without guessing or
+  imitating the creator; a missing author is never inferred from the title or question.
 - Missing evidence is handled by the system prompt. There is no exact refusal sentence in code.
 - Memory loads the complete thread for now with `lastMessages: Number.MAX_SAFE_INTEGER`.
 - Mastra generates thread titles natively from the first turn.
@@ -65,6 +70,7 @@ type CatalogEvidence = {
   citationId: string; // stable chunk ID
   text: string;
   title: string;
+  author?: string | null; // absent only on citation payloads persisted before attribution shipped
   url: string;        // timestamp deep link when available
   startSec?: number;
   timestamp?: string;

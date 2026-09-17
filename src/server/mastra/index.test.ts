@@ -24,11 +24,17 @@ describe("Nexus agent configuration", () => {
     expect(mastraModule.NEXUS_MAX_STEPS).toBe(30);
   });
 
-  it("asks for stable citations without forcing a tool call or exact refusal", async () => {
+  it("sets a concise, natural, multi-search answer contract", async () => {
     const instructions = await mastraModule.nexusAgent.getInstructions();
     expect(instructions).toEqual(expect.any(String));
     expect(instructions).toContain("[cite:<citationId>]");
-    expect(instructions).not.toContain("EXACTLY ONCE");
-    expect(instructions).not.toContain("refuse with exactly");
+    expect(instructions).toContain("more than once");
+    expect(instructions).not.toContain("exactly once");
+    expect(instructions).toContain("complete citationId");
+    expect(instructions).toContain("one to three short paragraphs");
+    expect(instructions).toContain("under 150 words");
+    expect(instructions).toContain("Synthesize the evidence");
+    expect(instructions).toContain("non-null author");
+    expect(instructions).toContain("Never imitate the creator");
   });
 });

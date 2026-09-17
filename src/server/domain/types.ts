@@ -85,5 +85,5 @@ export type Evidence = {
   context?: string;
   score: number;
   locator?: Locator;
-  source: { title: string; url: string };
+  source: { title: string; url: string; author: string | null };
 };

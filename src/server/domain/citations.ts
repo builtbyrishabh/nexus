@@ -6,6 +6,8 @@ export const catalogEvidenceSchema = z.object({
   citationId: z.string().min(1),
   text: z.string(),
   title: z.string(),
+  // Optional for citation payloads persisted before author attribution shipped.
+  author: z.string().nullable().optional(),
   url: z.string().url(),
   startSec: z.number().nonnegative().optional(),
   timestamp: z.string().optional(),
@@ -51,6 +53,7 @@ export function toCatalogEvidence(evidence: Evidence): CatalogEvidence {
     citationId: evidence.chunkId,
     text: evidenceText(evidence),
     title: evidence.source.title,
+    author: evidence.source.author,
     url: buildDeepLink(evidence.source.url, startSec),
     ...(startSec === undefined
       ? {}
