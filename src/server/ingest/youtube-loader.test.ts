@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   creatorHandleOf,
+  resolveYoutubeChannel,
   toSeconds,
   toVideoId,
   youtubeLoader,
@@ -109,6 +110,8 @@ const mocks = vi.hoisted(() => ({
   env: { TRANSCRIBE_FALLBACK: false, ASSEMBLYAI_API_KEY: "test-key" },
   fetchTranscript: vi.fn(),
   getBasicInfo: vi.fn(),
+  getChannel: vi.fn(),
+  resolveURL: vi.fn(),
   download: vi.fn(),
   transcribe: vi.fn(),
 }));
@@ -120,11 +123,69 @@ vi.mock("youtube-transcript", async (importOriginal) => {
 });
 vi.mock("youtubei.js", () => ({
   Log: { setLevel: () => undefined, Level: { NONE: 0 } },
-  Innertube: { create: async () => ({ getBasicInfo: mocks.getBasicInfo }) },
+  Innertube: {
+    create: async () => ({
+      getBasicInfo: mocks.getBasicInfo,
+      getChannel: mocks.getChannel,
+      resolveURL: mocks.resolveURL,
+    }),
+  },
 }));
 vi.mock("ai", () => ({ transcribe: mocks.transcribe }));
 
 const ref = { kind: "youtube_video", externalId: "UF8uR6Z6KLc" } as const;
+
+describe("resolveYoutubeChannel — every supported source input", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getChannel.mockResolvedValue({
+      metadata: {
+        external_id: "UC1234567890123456789012",
+        title: "Creator Name",
+        vanity_channel_url: "https://www.youtube.com/@Creator",
+      },
+    });
+  });
+
+  it("resolves a video URL through its owning channel", async () => {
+    mocks.getBasicInfo.mockResolvedValue({
+      basic_info: { channel_id: "UCfromvideo" },
+    });
+
+    await expect(
+      resolveYoutubeChannel(
+        "https://www.youtube.com/watch?v=UF8uR6Z6KLc",
+      ),
+    ).resolves.toEqual({
+      channelId: "UCfromvideo",
+      creatorHandle: "creator",
+      displayName: "Creator Name",
+    });
+    expect(mocks.getChannel).toHaveBeenCalledWith("UCfromvideo");
+  });
+
+  it.each([
+    "@Creator",
+    "https://www.youtube.com/@Creator",
+    "https://www.youtube.com/channel/UC1234567890123456789012",
+  ])("resolves the handle or channel URL %s", async (scope) => {
+    mocks.resolveURL.mockResolvedValue({
+      payload: { browseId: "UC1234567890123456789012" },
+    });
+
+    await expect(resolveYoutubeChannel(scope)).resolves.toMatchObject({
+      channelId: "UC1234567890123456789012",
+      creatorHandle: "creator",
+    });
+  });
+
+  it("accepts a bare channel ID", async () => {
+    await resolveYoutubeChannel("UC1234567890123456789012");
+
+    expect(mocks.resolveURL).not.toHaveBeenCalled();
+    expect(mocks.getChannel).toHaveBeenCalledWith("UC1234567890123456789012");
+  });
+});
 
 function videoOf(durationSec: number | undefined) {
   mocks.getBasicInfo.mockResolvedValue({

@@ -223,6 +223,8 @@ export type DiscoveredYouTubeChannel = {
   refs: SourceRef[];
 };
 
+export type ResolvedYouTubeChannel = Omit<DiscoveredYouTubeChannel, "refs">;
+
 /** Prefer YouTube's canonical @handle, with its stable channel id as the fallback identity. */
 export function creatorHandleOf(
   vanityUrl: string | undefined,
@@ -268,6 +270,22 @@ async function loadChannel(
   const yt = await getInnertube();
   const channelId = await resolveChannelId(scope);
   return { channelId, channel: await yt.getChannel(channelId) };
+}
+
+/** Resolve a supported YouTube input without discovering or ingesting its videos. */
+export async function resolveYoutubeChannel(
+  scope: ChannelScope,
+): Promise<ResolvedYouTubeChannel> {
+  const { channel, channelId } = await loadChannel(scope);
+
+  return {
+    channelId,
+    creatorHandle: creatorHandleOf(
+      channel.metadata.vanity_channel_url,
+      channelId,
+    ),
+    displayName: channel.metadata.title,
+  };
 }
 
 /** Resolve canonical channel identity and the exact bounded discovery set for a job. */

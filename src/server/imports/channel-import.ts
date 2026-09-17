@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { start } from "workflow/api";
 
 import { db } from "~/server/db";
@@ -11,6 +11,7 @@ import {
   importErrorMessage,
   summarizeImport,
 } from "~/server/domain/channel-import";
+import { resolveYoutubeChannel } from "~/server/ingest/youtube-loader";
 import { runChannelImport } from "~/workflows/channel-import";
 
 const terminalJobStatuses: Array<"completed" | "failed"> = [
@@ -23,9 +24,14 @@ export class ImportNotFoundError extends Error {}
 
 /** Persist and enqueue a durable import; the workflow continues after this call returns. */
 export async function startChannelImport(userId: string, scope: string) {
+  const resolved = await resolveYoutubeChannel(scope);
   const [job] = await db
     .insert(channelImport)
-    .values({ userId, scope: scope.trim() })
+    .values({
+      userId,
+      scope: resolved.channelId,
+      creatorHandle: resolved.creatorHandle,
+    })
     .returning({ id: channelImport.id });
   if (!job) throw new Error("Failed to create the channel import");
 
@@ -48,6 +54,40 @@ export async function startChannelImport(userId: string, scope: string) {
   }
 
   return { jobId: job.id };
+}
+
+/** Recent owned imports for the Sources overview; item counts remain derived. */
+export async function listChannelImports(userId: string) {
+  const jobs = await db
+    .select()
+    .from(channelImport)
+    .where(eq(channelImport.userId, userId))
+    .orderBy(desc(channelImport.createdAt))
+    .limit(20);
+
+  if (jobs.length === 0) return [];
+
+  const items = await db
+    .select({ jobId: channelImportItem.jobId, status: channelImportItem.status })
+    .from(channelImportItem)
+    .where(inArray(channelImportItem.jobId, jobs.map((job) => job.id)));
+  const itemsByJob = new Map<string, typeof items>();
+  for (const item of items) {
+    const jobItems = itemsByJob.get(item.jobId) ?? [];
+    jobItems.push(item);
+    itemsByJob.set(item.jobId, jobItems);
+  }
+
+  return jobs.map((job) => ({
+    id: job.id,
+    scope: job.scope,
+    creatorHandle: job.creatorHandle,
+    status: job.status,
+    error: job.error,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    summary: summarizeImport(itemsByJob.get(job.id) ?? []),
+  }));
 }
 
 /** Load one import through its owner predicate; foreign IDs are indistinguishable from missing. */
