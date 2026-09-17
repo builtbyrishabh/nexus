@@ -1,12 +1,15 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
-import { useEffect, useRef } from "react";
+import { DefaultChatTransport, type UIMessage } from "ai";
+import { useEffect, useMemo, useRef } from "react";
 
-import { AnswerText, citationsOf, textOf } from "~/app/_components/answer";
+import {
+  AnswerText,
+  citationRegistry,
+  textOf,
+} from "~/app/_components/answer";
 import { PromptBox } from "~/app/_components/prompt-box";
-import type { NexusUIMessage } from "~/server/domain/ui";
 import { api } from "~/trpc/react";
 
 /**
@@ -23,13 +26,13 @@ export function ChatConversation({
   seed,
 }: {
   threadId: string;
-  initialMessages: NexusUIMessage[];
+  initialMessages: UIMessage[];
   seed?: string | null;
 }) {
   const utils = api.useUtils();
   const hadHistoryRef = useRef(initialMessages.length > 0);
 
-  const { messages, sendMessage, status, stop, error } = useChat<NexusUIMessage>({
+  const { messages, sendMessage, status, stop, error } = useChat<UIMessage>({
     id: threadId,
     messages: initialMessages,
     transport: new DefaultChatTransport({
@@ -39,6 +42,7 @@ export function ChatConversation({
       }),
     }),
     onFinish: () => {
+      void utils.chats.messages.invalidate({ threadId });
       // First reply of a fresh thread: it now exists + has a title, so refresh the sidebar.
       if (!hadHistoryRef.current) {
         hadHistoryRef.current = true;
@@ -49,7 +53,7 @@ export function ChatConversation({
 
   const sentSeedRef = useRef(false);
   useEffect(() => {
-    if (sentSeedRef.current || !seed) return;
+    if (sentSeedRef.current || !seed || initialMessages.length > 0) return;
     sentSeedRef.current = true;
     void sendMessage({ text: seed });
     // Only ever fires once per mounted thread.
@@ -63,6 +67,7 @@ export function ChatConversation({
 
   const waiting =
     status === "submitted" && messages.at(-1)?.role === "user";
+  const citations = useMemo(() => citationRegistry(messages), [messages]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -81,10 +86,7 @@ export function ChatConversation({
                 </p>
               ) : (
                 <div className="max-w-[85%] rounded-2xl rounded-bl-sm bg-surface px-4 py-3 text-ink">
-                  <AnswerText
-                    text={textOf(message)}
-                    citations={citationsOf(message)}
-                  />
+                  <AnswerText text={textOf(message)} citations={citations} />
                 </div>
               )}
             </div>

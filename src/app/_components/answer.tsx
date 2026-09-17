@@ -1,53 +1,78 @@
 "use client";
 
-import type { NexusUIMessage } from "~/server/domain/ui";
-import type { Citation } from "~/server/domain/types";
+import { getToolName, isToolUIPart, type UIMessage } from "ai";
 
-/** The citations attached to a message (the `data-citations` part), or none. */
-export function citationsOf(message: NexusUIMessage): Citation[] {
-  for (const part of message.parts) {
-    if (part.type === "data-citations") return part.data;
+import {
+  catalogSearchResultSchema,
+  type CatalogEvidence,
+} from "~/server/domain/citations";
+
+/** Index completed native search-tool outputs once for the whole conversation. */
+export function citationRegistry(
+  messages: UIMessage[],
+): ReadonlyMap<string, CatalogEvidence> {
+  const citations = new Map<string, CatalogEvidence>();
+
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+    for (const part of message.parts) {
+      if (
+        !isToolUIPart(part) ||
+        getToolName(part) !== "searchCreatorCatalog" ||
+        part.state !== "output-available"
+      ) {
+        continue;
+      }
+
+      const result = catalogSearchResultSchema.safeParse(part.output);
+      if (!result.success) continue;
+      for (const evidence of result.data.evidence) {
+        if (!citations.has(evidence.citationId)) {
+          citations.set(evidence.citationId, evidence);
+        }
+      }
+    }
   }
-  return [];
+
+  return citations;
 }
 
-/** The assistant/user text of a message, concatenated from its text parts. */
-export function textOf(message: NexusUIMessage): string {
+/** The assistant/user text of a native AI SDK message. */
+export function textOf(message: UIMessage): string {
   return message.parts
-    .filter((p) => p.type === "text")
-    .map((p) => (p as { text: string }).text)
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
     .join("");
 }
 
-/**
- * Render assistant text, turning inline [n] markers into timestamped deep-links.
- */
+/** Render stable citation IDs as source links while leaving ordinary prose untouched. */
 export function AnswerText({
   text,
   citations,
 }: {
   text: string;
-  citations: Citation[];
+  citations: ReadonlyMap<string, CatalogEvidence>;
 }) {
-  const nodes = text.split(/(\[\d+\])/g).map((piece, i) => {
-    const m = /^\[(\d+)\]$/.exec(piece);
-    if (!m) return <span key={i}>{piece}</span>;
-    const idx = Number(m[1]) - 1;
-    const cite = citations[idx];
-    if (!cite) return null; // drop out-of-range markers
-    const label = cite.timestamp ? `[${cite.timestamp}]` : `[${idx + 1}]`;
+  const nodes = text.split(/(\[cite:[^\]\s]+\])/g).map((piece, index) => {
+    const marker = /^\[cite:([^\]\s]+)\]$/.exec(piece);
+    if (!marker) return <span key={index}>{piece}</span>;
+
+    const citation = citations.get(marker[1]!);
+    if (!citation) return <span key={index}>{piece}</span>;
+
     return (
       <a
-        key={i}
-        href={cite.deepLink ?? cite.url}
+        key={index}
+        href={citation.url}
         target="_blank"
         rel="noreferrer"
         className="mx-0.5 rounded bg-accent-soft px-1 font-medium text-accent-ink no-underline hover:opacity-80"
-        title={cite.sourceTitle}
+        title={citation.title}
       >
-        {label}
+        {citation.timestamp ? `[${citation.timestamp}]` : "[source]"}
       </a>
     );
   });
+
   return <p className="whitespace-pre-wrap leading-relaxed">{nodes}</p>;
 }
