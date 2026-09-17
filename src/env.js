@@ -45,6 +45,8 @@ export const env = createEnv({
     RERANK_MODEL: z.string().default("cohere/rerank-v3.5"),
     /** LLM judge for the eval scorers (Faithfulness/Answer-Relevancy/Context-Precision). */
     EVAL_MODEL: z.string().default("openai/gpt-5.6-luna"),
+    /** Clerk user whose persisted source library the production eval exercises. */
+    EVAL_USER_ID: z.string().min(1).optional(),
     /**
      * STT fallback for caption-less videos is the one place a re-run can spend real money
      * (audio download + AssemblyAI), so it is off by default and a fresh checkout can never
@@ -84,6 +86,7 @@ export const env = createEnv({
     EMBED_MODEL: process.env.EMBED_MODEL,
     RERANK_MODEL: process.env.RERANK_MODEL,
     EVAL_MODEL: process.env.EVAL_MODEL,
+    EVAL_USER_ID: process.env.EVAL_USER_ID,
     TRANSCRIBE_FALLBACK: process.env.TRANSCRIBE_FALLBACK,
     ASSEMBLYAI_API_KEY: process.env.ASSEMBLYAI_API_KEY,
     CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,

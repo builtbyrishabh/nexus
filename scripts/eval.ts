@@ -1,5 +1,6 @@
 import "./_env";
 
+import { env } from "~/env";
 import { runEvalSuite } from "~/server/evals/run";
 import { AXES, type CaseResult, type EvalSummary } from "~/server/evals/summary";
 
@@ -41,9 +42,14 @@ function printCases(results: CaseResult[]): void {
 }
 
 async function main() {
+  if (!env.EVAL_USER_ID) {
+    throw new Error("EVAL_USER_ID is not set");
+  }
   const verbose = process.argv.slice(2).includes("--verbose");
   console.log("Running golden set…");
-  const { results, summary } = await runEvalSuite();
+  const { results, summary } = await runEvalSuite({
+    userId: env.EVAL_USER_ID,
+  });
   if (verbose) printCases(results);
   printSummary(summary);
   process.exit(summary.passed ? 0 : 1);

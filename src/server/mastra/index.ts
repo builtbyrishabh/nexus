@@ -5,6 +5,10 @@ import { PostgresStore } from "@mastra/pg";
 import { gateway } from "ai";
 
 import { env } from "~/env";
+import {
+  nexusRequestContextSchema,
+  type NexusRequestContext,
+} from "~/server/domain/source-library";
 import { searchCreatorCatalog } from "~/server/mastra/search-tool";
 
 const NEXUS_INSTRUCTIONS = `You are Nexus. You answer questions about creators' YouTube catalogs, grounded strictly in what they actually said on video.
@@ -26,6 +30,23 @@ Answering style:
 - Do not mention searches, chunks, retrieved context, or other internal mechanics.
 
 Prefer the creator's own framing and answer in the same language as the user. Default to English.`;
+
+function creatorInstructions(
+  allowedCreators: { handle: string; displayName: string }[],
+  hasSources: boolean,
+): string {
+  if (!hasSources) {
+    return "This user's source library is empty. If catalog evidence is requested, explain that they need to add a creator first.";
+  }
+  if (allowedCreators.length === 0) {
+    return "This user's source library has sources but no named creators. Search the full library without a creator handle.";
+  }
+
+  const roster = allowedCreators
+    .map((creator) => `- ${creator.displayName}: ${creator.handle}`)
+    .join("\n");
+  return `The creators available in this user's source library are:\n${roster}\n\nWhen the user asks for one creator's perspective, pass that creator's exact handle to searchCreatorCatalog. Never target a creator outside this list. A creator perspective means evidence from their videos, never imitation of their voice. If the tool returns a message instead of evidence, relay it plainly.`;
+}
 
 export const NEXUS_MAX_STEPS = 30;
 
@@ -53,10 +74,20 @@ export const nexusMemory = new Memory({
 });
 
 /** The registered agent owns its prompt, memory, model, and retrieval tool. */
-export const nexusAgent = new Agent({
+export const nexusAgent = new Agent<
+  "nexus",
+  { searchCreatorCatalog: typeof searchCreatorCatalog },
+  undefined,
+  NexusRequestContext
+>({
   id: "nexus",
   name: "Nexus",
-  instructions: NEXUS_INSTRUCTIONS,
+  requestContextSchema: nexusRequestContextSchema,
+  instructions: ({ requestContext }) => {
+    const allowedCreators = requestContext.get("allowedCreators") ?? [];
+    const hasSources = requestContext.get("hasSources") ?? false;
+    return `${NEXUS_INSTRUCTIONS}\n\n${creatorInstructions(allowedCreators, hasSources)}`;
+  },
   tools: { searchCreatorCatalog },
   memory: nexusMemory,
   // Route through the Vercel AI Gateway (one credential, shared with embeddings).

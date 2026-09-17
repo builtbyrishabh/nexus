@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { RequestContext } from "@mastra/core/request-context";
+
+import type { NexusRequestContext } from "~/server/domain/source-library";
 
 vi.mock("~/env", () => ({
   env: {
@@ -24,6 +27,12 @@ describe("Nexus agent configuration", () => {
     expect(mastraModule.NEXUS_MAX_STEPS).toBe(30);
   });
 
+  it("requires trusted request context before generation", async () => {
+    await expect(
+      mastraModule.nexusAgent.generate("hello", { maxSteps: 1 }),
+    ).rejects.toThrow("Request context validation failed");
+  });
+
   it("sets a concise, natural, multi-search answer contract", async () => {
     const instructions = await mastraModule.nexusAgent.getInstructions();
     expect(instructions).toEqual(expect.any(String));
@@ -36,5 +45,36 @@ describe("Nexus agent configuration", () => {
     expect(instructions).toContain("Synthesize the evidence");
     expect(instructions).toContain("non-null author");
     expect(instructions).toContain("Never imitate the creator");
+  });
+
+  it("shows only the request's available creators in its instructions", async () => {
+    const requestContext = new RequestContext<NexusRequestContext>();
+    requestContext.set("userId", "user-1");
+    requestContext.set("hasSources", true);
+    requestContext.set("allowedCreators", [
+      { handle: "alex", displayName: "Alex Hormozi" },
+      { handle: "naval", displayName: "Naval Ravikant" },
+    ]);
+
+    const instructions = await mastraModule.nexusAgent.getInstructions({
+      requestContext: requestContext as unknown as RequestContext,
+    });
+
+    expect(instructions).toContain("Alex Hormozi: alex");
+    expect(instructions).toContain("Naval Ravikant: naval");
+    expect(instructions).toContain("exact handle");
+  });
+
+  it("describes an empty source library", async () => {
+    const requestContext = new RequestContext<NexusRequestContext>();
+    requestContext.set("userId", "user-1");
+    requestContext.set("hasSources", false);
+    requestContext.set("allowedCreators", []);
+
+    const instructions = await mastraModule.nexusAgent.getInstructions({
+      requestContext: requestContext as unknown as RequestContext,
+    });
+
+    expect(instructions).toContain("source library is empty");
   });
 });

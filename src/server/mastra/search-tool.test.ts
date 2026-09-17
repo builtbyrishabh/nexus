@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import type { Evidence } from "~/server/domain/types";
+import type { NexusRequestContext } from "~/server/domain/source-library";
 
 const mocks = vi.hoisted(() => ({ retrieve: vi.fn() }));
 
@@ -39,10 +40,14 @@ const evidence: Evidence[] = [
   },
 ];
 
-function executionContext() {
-  const requestContext = new RequestContext();
-  requestContext.setRaw("capture", { executed: false });
-  requestContext.setRaw("collectionCreatorHandles", ["creator"]);
+function executionContext(
+  allowedCreators = [{ handle: "creator", displayName: "Creator Name" }],
+  hasSources = true,
+) {
+  const requestContext = new RequestContext<NexusRequestContext>();
+  requestContext.set("userId", "user-1");
+  requestContext.set("hasSources", hasSources);
+  requestContext.set("allowedCreators", allowedCreators);
   return { requestContext } as Parameters<NonNullable<typeof searchCreatorCatalog.execute>>[1];
 }
 
@@ -53,7 +58,7 @@ describe("searchCreatorCatalog", () => {
     expect(schema.safeParse({ query: "x".repeat(501) }).success).toBe(false);
   });
 
-  it("searches the full catalog with strict reranking and returns structured evidence", async () => {
+  it("searches the user's full library when no creator is requested", async () => {
     mocks.retrieve.mockResolvedValue(evidence);
     const execute = searchCreatorCatalog.execute;
     if (!execute) throw new Error("search tool has no executor");
@@ -61,6 +66,7 @@ describe("searchCreatorCatalog", () => {
     const result = await execute({ query: "pricing advice" }, executionContext());
 
     expect(mocks.retrieve).toHaveBeenCalledWith("pricing advice", {
+      userId: "user-1",
       topK: 5,
     });
     expect(result).toEqual({
@@ -86,5 +92,71 @@ describe("searchCreatorCatalog", () => {
         },
       ],
     });
+  });
+
+  it("narrows an allowed creator without broadening the user membership", async () => {
+    mocks.retrieve.mockResolvedValue([]);
+    const execute = searchCreatorCatalog.execute;
+    if (!execute) throw new Error("search tool has no executor");
+
+    await execute(
+      { query: "pricing advice", creatorHandle: "creator" },
+      executionContext(),
+    );
+
+    expect(mocks.retrieve).toHaveBeenCalledWith("pricing advice", {
+      userId: "user-1",
+      creatorHandle: "creator",
+      topK: 5,
+    });
+  });
+
+  it("rejects a creator outside the user's library without searching", async () => {
+    const execute = searchCreatorCatalog.execute;
+    if (!execute) throw new Error("search tool has no executor");
+
+    const result = await execute(
+      { query: "pricing advice", creatorHandle: "someone-else" },
+      executionContext(),
+    );
+
+    expect(mocks.retrieve).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      evidence: [],
+      message: "The creator 'someone-else' is not in your source library.",
+    });
+  });
+
+  it("does not broaden an empty library into a global search", async () => {
+    const execute = searchCreatorCatalog.execute;
+    if (!execute) throw new Error("search tool has no executor");
+
+    const result = await execute(
+      { query: "pricing advice" },
+      executionContext([], false),
+    );
+
+    expect(mocks.retrieve).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      evidence: [],
+      message: "Your source library is empty. Add a creator before searching it.",
+    });
+  });
+
+  it("searches untagged member sources when no creator is requested", async () => {
+    mocks.retrieve.mockResolvedValue([]);
+    const execute = searchCreatorCatalog.execute;
+    if (!execute) throw new Error("search tool has no executor");
+
+    const result = await execute(
+      { query: "pricing advice" },
+      executionContext([], true),
+    );
+
+    expect(mocks.retrieve).toHaveBeenCalledWith("pricing advice", {
+      userId: "user-1",
+      topK: 5,
+    });
+    expect(result).toEqual({ evidence: [] });
   });
 });

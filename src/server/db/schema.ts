@@ -6,6 +6,7 @@ import {
   jsonb,
   pgEnum,
   pgTableCreator,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -64,6 +65,21 @@ export const source = createTable(
   ],
 );
 
+/** Which canonical sources an authenticated Clerk user may search. */
+export const userSource = createTable(
+  "user_source",
+  {
+    userId: text("user_id").notNull(),
+    sourceId: uuid("source_id")
+      .notNull()
+      .references(() => source.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.sourceId] })],
+);
+
 /**
  * `chunk` — the retrievable unit. One timestamped slice of a transcript: what retrieval
  * searches and what the model reads. `context_text` holds the Contextual-Retrieval blurb;
@@ -104,5 +120,7 @@ export const chunk = createTable(
 
 export type Source = typeof source.$inferSelect;
 export type NewSource = typeof source.$inferInsert;
+export type UserSource = typeof userSource.$inferSelect;
+export type NewUserSource = typeof userSource.$inferInsert;
 export type Chunk = typeof chunk.$inferSelect;
 export type NewChunk = typeof chunk.$inferInsert;

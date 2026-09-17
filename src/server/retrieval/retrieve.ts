@@ -1,7 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 
 import { db } from "~/server/db";
-import { chunk, source } from "~/server/db/schema";
+import { chunk, source, userSource } from "~/server/db/schema";
 import type { Evidence } from "~/server/domain/types";
 import { embedQuery } from "~/server/ingest/embed";
 import {
@@ -40,10 +40,18 @@ type HydratedRow = {
 const uuidArray = (ids: string[]): SQL => sql`${sql.param(ids)}::uuid[]`;
 
 /** Dense retriever: pgvector cosine nearest-neighbors (HNSW). Returns chunk ids, best first. */
-async function denseSearch(qvec: string): Promise<string[]> {
+async function denseSearch(
+  qvec: string,
+  userId: string,
+  creatorHandle?: string,
+): Promise<string[]> {
   const rows = (await db.execute(sql`
     SELECT c.id AS id
     FROM ${chunk} c
+    JOIN ${userSource} us
+      ON us.source_id = c.source_id AND us.user_id = ${userId}
+    JOIN ${source} s ON s.id = c.source_id
+    ${creatorHandle ? sql`WHERE s.creator_handle = ${creatorHandle}` : sql``}
     ORDER BY c.embedding <=> ${qvec}::vector
     LIMIT ${CANDIDATE_K}
   `)) as unknown as { id: string }[];
@@ -56,12 +64,20 @@ async function denseSearch(qvec: string): Promise<string[]> {
  * phrases, OR, `-negation` — safely, and yields no rows for an empty/stopword-only query, which
  * RRF then simply treats as a missing list. This is what dense misses: exact names and jargon.
  */
-async function sparseSearch(query: string): Promise<string[]> {
+async function sparseSearch(
+  query: string,
+  userId: string,
+  creatorHandle?: string,
+): Promise<string[]> {
   const rows = (await db.execute(sql`
     SELECT c.id AS id
     FROM ${chunk} c
+    JOIN ${userSource} us
+      ON us.source_id = c.source_id AND us.user_id = ${userId}
+    JOIN ${source} s ON s.id = c.source_id
     CROSS JOIN websearch_to_tsquery('english', ${query}) AS q
     WHERE c.tsv @@ q
+      ${creatorHandle ? sql`AND s.creator_handle = ${creatorHandle}` : sql``}
     ORDER BY ts_rank_cd(c.tsv, q) DESC
     LIMIT ${CANDIDATE_K}
   `)) as unknown as { id: string }[];
@@ -165,7 +181,7 @@ async function expandNeighbors(
  */
 export async function retrieve(
   query: string,
-  opts?: { topK?: number },
+  opts: { userId: string; creatorHandle?: string; topK?: number },
 ): Promise<Evidence[]> {
   const topK = opts?.topK ?? 5;
 
@@ -173,8 +189,8 @@ export async function retrieve(
   // instead of paying its latency serially in front of both retrievers.
   const qvecP = embedQuery(query).then((v) => `[${v.join(",")}]`);
   const [dense, sparse] = await Promise.all([
-    qvecP.then(denseSearch),
-    sparseSearch(query),
+    qvecP.then((qvec) => denseSearch(qvec, opts.userId, opts.creatorHandle)),
+    sparseSearch(query, opts.userId, opts.creatorHandle),
   ]);
 
   const fused = rrfFuse([dense, sparse], { k: RRF_K });

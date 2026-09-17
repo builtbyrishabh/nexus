@@ -1,4 +1,5 @@
 import type { ModelMessage } from "ai";
+import { RequestContext } from "@mastra/core/request-context";
 import pMap from "p-map";
 
 import {
@@ -16,6 +17,10 @@ import {
   type EvalSummary,
 } from "~/server/evals/summary";
 import { nexusAgent, NEXUS_MAX_STEPS } from "~/server/mastra";
+import {
+  loadSourceLibrary,
+  type NexusRequestContext,
+} from "~/server/domain/source-library";
 
 const CASE_CONCURRENCY = 3;
 
@@ -52,13 +57,21 @@ export function citationsMatchEvidence(
 }
 
 /** Run one golden case through the registered production agent and its real tool loop. */
-async function runCase(testCase: GoldenCase): Promise<CaseResult> {
+async function runCase(
+  testCase: GoldenCase,
+  context: NexusRequestContext,
+): Promise<CaseResult> {
   const messages: ModelMessage[] = [
     ...(testCase.history ?? []),
     { role: "user", content: testCase.query },
   ];
+  const requestContext = new RequestContext<NexusRequestContext>();
+  requestContext.set("userId", context.userId);
+  requestContext.set("hasSources", context.hasSources);
+  requestContext.set("allowedCreators", context.allowedCreators);
   const output = await nexusAgent.generate(messages, {
     maxSteps: NEXUS_MAX_STEPS,
+    requestContext,
   });
   const evidence = catalogEvidence(output.toolResults);
   const citationsValid = citationsMatchEvidence(output.text, evidence);
@@ -89,13 +102,17 @@ async function runCase(testCase: GoldenCase): Promise<CaseResult> {
 }
 
 export async function runEvalSuite(options?: {
+  userId: string;
   cases?: GoldenCase[];
   concurrency?: number;
 }): Promise<{ results: CaseResult[]; summary: EvalSummary }> {
+  if (!options?.userId) throw new Error("An eval user ID is required");
   const cases = options?.cases ?? GOLDEN_SET;
   validateGolden(cases);
+  const library = await loadSourceLibrary(options.userId);
+  const context = { userId: options.userId, ...library };
 
-  const results = await pMap(cases, runCase, {
+  const results = await pMap(cases, (testCase) => runCase(testCase, context), {
     concurrency: options?.concurrency ?? CASE_CONCURRENCY,
   });
   return { results, summary: summarize(results) };
