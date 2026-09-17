@@ -49,7 +49,7 @@ type CatalogEvidence = {
 };
 ```
 
-`Evidence` is the internal retrieval result. `CatalogEvidence` is the structured tool output shared with the model, persisted memory, eval harness, and browser.
+`Evidence` is the internal retrieval result. `CatalogEvidence` is the full structured tool output shared with persisted memory, the eval harness, and the browser. Native `toModelOutput` projects only `citationId`, `text`, and `title` into model input.
 
 ## Storage
 
@@ -118,10 +118,10 @@ The route:
 1. authenticates with Clerk;
 2. validates the envelope, accepts only user text parts, and strips client metadata;
 3. verifies ownership if the thread already exists;
-4. calls `handleChatStream` for agent `nexus` with `{ thread, resource }` memory IDs, the request abort signal, and `maxSteps: 30`;
+4. calls `handleChatStream` for agent `nexus` with the authenticated resource ID, a thread ID and deterministic first-question title, the request abort signal, and `maxSteps: 30`;
 5. returns `createUIMessageStreamResponse({ stream })`.
 
-There is no application-level ask function, history window, persistence callback, or custom stream protocol.
+There is no application-level ask function, manual history assembly, persistence callback, or custom stream protocol. Memory recalls 20 recent messages, and native `ToolCallFilter` removes earlier runs' tool payloads only from the model prompt. Current-run evidence stays available. The saved transcript retains full citation data.
 
 ## Citation rendering
 

@@ -31,8 +31,9 @@ The route does not recall history, assemble model messages, control tool phases,
 - Search is repeatable. The agent may call it as needed, up to 30 total steps.
 - Catalog claims must come from returned evidence.
 - Missing evidence is handled by the system prompt. There is no exact refusal sentence in code.
-- Memory loads the complete thread for now with `lastMessages: Number.MAX_SAFE_INTEGER`.
-- Mastra generates thread titles natively from the first turn.
+- Memory recalls the latest 20 stored messages for the model; the UI can still load the complete thread.
+- Native `ToolCallFilter` removes previous turns' tool calls and results from model input without deleting stored messages. Current-run evidence stays available; follow-ups can search again.
+- Thread creation receives a deterministic title from the first question, shared with the optimistic sidebar. No title-generation model call is needed.
 
 ## Retrieval
 
@@ -71,9 +72,13 @@ type CatalogEvidence = {
 };
 ```
 
+`toModelOutput` sends only `citationId`, `text`, and `title` to the model. The full result remains in memory and the UI for citation rendering.
+
 The agent cites a claim as `[cite:<citationId>]`. The React client builds one registry from completed `searchCreatorCatalog` tool parts across the conversation and renders each marker as a timestamp link.
 
 Because tool calls and results are native AI SDK message parts persisted by Mastra, citations use the same path while streaming and after reload. There is no parallel `data-citations` protocol.
+
+The recall window and tool filter reduce context growth across turns; they are not a hard token cap within one run. The 30-step ceiling remains. The installed `TokenLimiterProcessor` is not enabled: it counts raw tool results before projection and can remove unsaved citation evidence from the active message list. Any future token guard must preserve the full citation transcript.
 
 ## Ingestion
 
@@ -104,7 +109,7 @@ Unsupported-answer behavior is judged semantically. The eval checks whether the 
 4. Stable chunk-ID citation parsing and rendering.
 5. Authentication and thread ownership at the HTTP boundary.
 
-Agent looping, memory, title generation, streaming, tool persistence, and UI message transport remain library-native.
+Agent looping, memory, streaming, tool persistence, and UI message transport remain library-native. The route supplies the initial thread title.
 
 ## References
 

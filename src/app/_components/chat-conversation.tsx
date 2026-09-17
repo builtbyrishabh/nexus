@@ -65,32 +65,39 @@ export function ChatConversation({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const lastPart = messages.at(-1)?.parts.at(-1);
   const waiting =
-    status === "submitted" && messages.at(-1)?.role === "user";
+    status === "submitted" ||
+    (status === "streaming" &&
+      (lastPart?.type !== "text" || !lastPart.text.trim()));
   const citations = useMemo(() => citationRegistry(messages), [messages]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={
-                message.role === "user" ? "flex justify-end" : "flex justify-start"
-              }
-            >
-              {message.role === "user" ? (
-                <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accent px-4 py-2.5 text-white">
-                  {textOf(message)}
-                </p>
-              ) : (
-                <div className="max-w-[85%] rounded-2xl rounded-bl-sm bg-surface px-4 py-3 text-ink">
-                  <AnswerText text={textOf(message)} citations={citations} />
-                </div>
-              )}
-            </div>
-          ))}
+          {messages.map((message) => {
+            const text = textOf(message);
+            if (message.role === "assistant" && !text.trim()) return null;
+            return (
+              <div
+                key={message.id}
+                className={
+                  message.role === "user" ? "flex justify-end" : "flex justify-start"
+                }
+              >
+                {message.role === "user" ? (
+                  <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-accent px-4 py-2.5 text-white">
+                    {text}
+                  </p>
+                ) : (
+                  <div className="max-w-[85%] rounded-2xl rounded-bl-sm bg-surface px-4 py-3 text-ink">
+                    <AnswerText text={text} citations={citations} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
           {waiting && (
             <div className="flex justify-start">

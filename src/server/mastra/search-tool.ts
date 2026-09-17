@@ -30,6 +30,17 @@ export const searchCreatorCatalog = createTool({
     "Search the indexed creator catalog for evidence relevant to the user's question.",
   inputSchema,
   outputSchema: catalogSearchResultSchema,
+  // Preserve full citation metadata for the UI; the model only needs evidence and source identity.
+  toModelOutput: ({ evidence }) => ({
+    type: "json",
+    value: {
+      evidence: evidence.map(({ citationId, text, title }) => ({
+        citationId,
+        text,
+        title,
+      })),
+    },
+  }),
   execute: async ({ query }) => {
     const evidence = await retrieve(query, {
       topK: ANSWER_TOP_K,

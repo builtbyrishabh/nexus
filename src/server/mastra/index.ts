@@ -1,5 +1,6 @@
 import { Mastra } from "@mastra/core";
 import { Agent } from "@mastra/core/agent";
+import { ToolCallFilter } from "@mastra/core/processors";
 import { Memory } from "@mastra/memory";
 import { PostgresStore } from "@mastra/pg";
 import { gateway } from "ai";
@@ -13,6 +14,7 @@ Use \`searchCreatorCatalog\` when you need evidence from the catalog. You may se
 
 For claims about catalog content:
 - Answer only from evidence returned by \`searchCreatorCatalog\`; do not fill gaps with outside knowledge.
+- Earlier assistant answers are conversation context, not source evidence. Search again when a follow-up needs evidence that is no longer available.
 - Cite each supported claim inline as [cite:<citationId>] using the exact citationId from the evidence.
 - If the evidence does not support the requested claim, say that the catalog does not provide enough evidence and suggest a useful next question.
 
@@ -29,17 +31,11 @@ export const storage = new PostgresStore({
   connectionString: env.DATABASE_URL,
 });
 
-const model = gateway(env.GEN_MODEL);
-
-/** One native memory instance owns thread persistence, recall, and title generation. */
+/** Keep the full transcript stored, but recall only a recent window for the model. */
 export const nexusMemory = new Memory({
   storage,
   options: {
-    lastMessages: Number.MAX_SAFE_INTEGER,
-    generateTitle: {
-      model,
-      instructions: "Write a short, specific title for this conversation.",
-    },
+    lastMessages: 20,
   },
 });
 
@@ -50,9 +46,11 @@ export const nexusAgent = new Agent({
   instructions: NEXUS_INSTRUCTIONS,
   tools: { searchCreatorCatalog },
   memory: nexusMemory,
+  // Remove previous turns' search payloads only from model input; retain current evidence and UI history.
+  inputProcessors: [new ToolCallFilter()],
   // Route through the Vercel AI Gateway (one credential, shared with embeddings).
   // A bare "provider/model" string would use Mastra's own models.dev gateway instead.
-  model,
+  model: gateway(env.GEN_MODEL),
 });
 
 export const mastra = new Mastra({

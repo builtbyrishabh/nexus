@@ -5,6 +5,7 @@ import { createUIMessageStreamResponse } from "ai";
 
 import { parseChatRequest } from "~/app/api/chat/request";
 import { assertThreadOwner } from "~/server/chat/threads";
+import { titleFromQuestion } from "~/server/chat/title";
 import { mastra, NEXUS_MAX_STEPS } from "~/server/mastra";
 
 export const runtime = "nodejs";
@@ -34,7 +35,16 @@ export async function POST(req: Request) {
     version: "v7",
     params: {
       messages: [message],
-      memory: { thread: threadId, resource: userId },
+      memory: {
+        // Mastra uses this title only when creating the thread, preserving later user renames.
+        thread: {
+          id: threadId,
+          title: titleFromQuestion(
+            message.parts.flatMap((part) => part.type === "text" ? [part.text] : []).join(" "),
+          ),
+        },
+        resource: userId,
+      },
       maxSteps: NEXUS_MAX_STEPS,
       abortSignal: req.signal,
     },

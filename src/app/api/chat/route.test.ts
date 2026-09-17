@@ -66,7 +66,10 @@ describe("POST /api/chat", () => {
       version: "v7",
       params: {
         messages: [message],
-        memory: { thread: threadId, resource: "user-1" },
+        memory: {
+          thread: { id: threadId, title: "What did the creator say?" },
+          resource: "user-1",
+        },
         maxSteps: 30,
         abortSignal: req.signal,
       },

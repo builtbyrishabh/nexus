@@ -5,6 +5,7 @@ import { Suspense, useState } from "react";
 
 import { ChatConversation } from "~/app/_components/chat-conversation";
 import { PromptBox } from "~/app/_components/prompt-box";
+import { titleFromQuestion } from "~/server/chat/title";
 import { api } from "~/trpc/react";
 
 const newThreadId = () => crypto.randomUUID();
@@ -41,7 +42,7 @@ function ChatsHarness() {
     utils.chats.list.setData(undefined, (prev) => [
       {
         id: threadId,
-        title: text.length > 60 ? `${text.slice(0, 60).trimEnd()}…` : text,
+        title: titleFromQuestion(text),
         createdAt: now,
         updatedAt: now,
       },

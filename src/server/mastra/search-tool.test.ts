@@ -37,6 +37,20 @@ function executionContext() {
 }
 
 describe("searchCreatorCatalog", () => {
+  it("keeps citation display metadata out of the model output", () => {
+    const result = searchCreatorCatalog.toModelOutput?.({ evidence: [{
+      citationId: "chunk-1",
+      text: "The transcript text.",
+      title: "Example video",
+      url: "https://youtu.be/abc?t=65",
+      startSec: 65,
+      timestamp: "1:05",
+    }] });
+    expect(result).toEqual({ type: "json", value: { evidence: [{
+      citationId: "chunk-1", text: "The transcript text.", title: "Example video",
+    }] } });
+  });
+
   it("rejects queries longer than 500 characters", () => {
     const schema = searchCreatorCatalog.inputSchema as unknown as z.ZodTypeAny;
 

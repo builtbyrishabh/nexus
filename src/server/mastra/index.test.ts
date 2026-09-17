@@ -10,13 +10,13 @@ vi.mock("~/env", () => ({
 const mastraModule = await import("~/server/mastra");
 
 describe("Nexus agent configuration", () => {
-  it("uses one native memory instance with full thread recall", async () => {
+  it("uses one native memory instance with bounded thread recall", async () => {
     expect("nexusMemory" in mastraModule).toBe(true);
 
     const memory = await mastraModule.nexusAgent.getMemory();
     expect(memory).toBe(mastraModule.nexusMemory);
     expect(mastraModule.nexusMemory.getMergedThreadConfig().lastMessages).toBe(
-      Number.MAX_SAFE_INTEGER,
+      20,
     );
   });
 
