@@ -5,7 +5,7 @@ import { DefaultChatTransport, type UIMessage } from "ai";
 import { useEffect, useMemo, useRef } from "react";
 
 import {
-  AnswerText,
+  CitedAnswer,
   citationRegistry,
   textOf,
 } from "~/app/_components/answer";
@@ -86,7 +86,14 @@ export function ChatConversation({
                 </p>
               ) : (
                 <div className="max-w-[85%] rounded-2xl rounded-bl-sm bg-surface px-4 py-3 text-ink">
-                  <AnswerText text={textOf(message)} citations={citations} />
+                  <CitedAnswer
+                    text={textOf(message)}
+                    citations={citations}
+                    showSources={
+                      status !== "streaming" ||
+                      message.id !== messages.at(-1)?.id
+                    }
+                  />
                 </div>
               )}
             </div>

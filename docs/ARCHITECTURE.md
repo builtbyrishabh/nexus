@@ -68,7 +68,9 @@ Search returns structured tool output:
 ```ts
 type CatalogEvidence = {
   citationId: string; // stable chunk ID
-  text: string;
+  text: string;       // model-ready context + source text
+  rawText?: string;   // exact source text; absent on older persisted payloads
+  context?: string;   // generated retrieval context, never presented as a quote
   title: string;
   author?: string | null; // absent only on citation payloads persisted before attribution shipped
   url: string;        // timestamp deep link when available
@@ -77,7 +79,15 @@ type CatalogEvidence = {
 };
 ```
 
-The agent cites a claim as `[cite:<citationId>]`. The React client builds one registry from completed `searchCreatorCatalog` tool parts across the conversation and renders each marker as a timestamp link.
+The agent cites a claim as `[cite:<citationId>]`. The React client builds one registry from completed
+`searchCreatorCatalog` tool parts across the conversation. Each answer resolves only the IDs it
+actually cites, renders compact numbered controls, and shows a deduplicated Sources footer grouped
+by video. Selecting either opens the cited moment in an on-demand right drawer on desktop or bottom
+sheet on mobile.
+
+The detail view quotes only `rawText`. Generated `context` is labeled separately, and older payloads
+without `rawText` show that the transcript excerpt is unavailable instead of presenting combined
+model evidence as a quote.
 
 Because tool calls and results are native AI SDK message parts persisted by Mastra, citations use the same path while streaming and after reload. There is no parallel `data-citations` protocol.
 

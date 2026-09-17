@@ -4,7 +4,12 @@ import type { Evidence } from "~/server/domain/types";
 
 export const catalogEvidenceSchema = z.object({
   citationId: z.string().min(1),
+  /** Model-ready evidence retained for persisted payload compatibility. */
   text: z.string(),
+  /** Exact source text for user-visible quoting. Missing on older persisted payloads. */
+  rawText: z.string().optional(),
+  /** Generated retrieval context, displayed separately and never presented as a quote. */
+  context: z.string().optional(),
   title: z.string(),
   // Optional for citation payloads persisted before author attribution shipped.
   author: z.string().nullable().optional(),
@@ -52,6 +57,8 @@ export function toCatalogEvidence(evidence: Evidence): CatalogEvidence {
   return {
     citationId: evidence.chunkId,
     text: evidenceText(evidence),
+    rawText: evidence.excerpt,
+    ...(evidence.context ? { context: evidence.context } : {}),
     title: evidence.source.title,
     author: evidence.source.author,
     url: buildDeepLink(evidence.source.url, startSec),

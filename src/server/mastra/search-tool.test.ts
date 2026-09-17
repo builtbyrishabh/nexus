@@ -14,7 +14,8 @@ const evidence: Evidence[] = [
   {
     chunkId: "chunk-1",
     sourceId: "source-1",
-    text: "The transcript text.",
+    text: "Expanded transcript context.",
+    excerpt: "The transcript text.",
     context: "Creator Name explains the idea.",
     score: 0.9,
     locator: { startSec: 65, endSec: 90 },
@@ -28,6 +29,7 @@ const evidence: Evidence[] = [
     chunkId: "chunk-2",
     sourceId: "source-2",
     text: "A book passage.",
+    excerpt: "A book passage.",
     score: 0.8,
     source: {
       title: "Example book",
@@ -65,7 +67,9 @@ describe("searchCreatorCatalog", () => {
       evidence: [
         {
           citationId: "chunk-1",
-          text: "Context: Creator Name explains the idea.\nThe transcript text.",
+          text: "Context: Creator Name explains the idea.\nExpanded transcript context.",
+          rawText: "The transcript text.",
+          context: "Creator Name explains the idea.",
           title: "Example video",
           author: "Creator Name",
           url: "https://youtu.be/abc?t=65",
@@ -75,6 +79,7 @@ describe("searchCreatorCatalog", () => {
         {
           citationId: "chunk-2",
           text: "A book passage.",
+          rawText: "A book passage.",
           title: "Example book",
           author: null,
           url: "https://example.com/book",
