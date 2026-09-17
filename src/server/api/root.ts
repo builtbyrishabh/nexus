@@ -1,4 +1,5 @@
 import { chatsRouter } from "~/server/api/routers/chats";
+import { importsRouter } from "~/server/api/routers/imports";
 import {
   createCallerFactory,
   createTRPCRouter,
@@ -14,6 +15,7 @@ import {
 export const appRouter = createTRPCRouter({
   health: publicProcedure.query(() => ({ ok: true })),
   chats: chatsRouter,
+  imports: importsRouter,
 });
 
 // export type definition of API

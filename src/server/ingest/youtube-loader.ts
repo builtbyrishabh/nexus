@@ -207,27 +207,95 @@ type VideoFeed = {
   getContinuation(): Promise<VideoFeed>;
 };
 
+type YouTubeChannel = {
+  metadata: {
+    external_id?: string;
+    title?: string;
+    vanity_channel_url?: string;
+  };
+  getVideos(): Promise<VideoFeed>;
+};
+
+export type DiscoveredYouTubeChannel = {
+  channelId: string;
+  creatorHandle: string;
+  displayName?: string;
+  refs: SourceRef[];
+};
+
+/** Prefer YouTube's canonical @handle, with its stable channel id as the fallback identity. */
+export function creatorHandleOf(
+  vanityUrl: string | undefined,
+  channelId: string,
+): string {
+  if (vanityUrl) {
+    try {
+      const segment = new URL(vanityUrl).pathname.split("/").filter(Boolean)[0];
+      if (segment?.startsWith("@") && segment.length > 1) {
+        return decodeURIComponent(segment.slice(1)).toLowerCase();
+      }
+    } catch {
+      // External metadata can be malformed; the stable channel id remains valid.
+    }
+  }
+  return channelId;
+}
+
+async function* discoverVideos(
+  channel: Pick<YouTubeChannel, "getVideos">,
+  limit?: number,
+): AsyncGenerator<SourceRef> {
+  let feed = await channel.getVideos();
+  let yielded = 0;
+
+  for (;;) {
+    for (const item of feed.videos) {
+      // Current layouts use `content_id`; older ones use `video_id`.
+      const videoId = videoIdOf(item);
+      if (!videoId) continue;
+      if (limit !== undefined && yielded >= limit) return;
+      yielded++;
+      yield { kind: "youtube_video", externalId: videoId };
+    }
+    if (!feed.has_continuation) return;
+    feed = await feed.getContinuation();
+  }
+}
+
+async function loadChannel(
+  scope: ChannelScope,
+): Promise<{ channelId: string; channel: YouTubeChannel }> {
+  const yt = await getInnertube();
+  const channelId = await resolveChannelId(scope);
+  return { channelId, channel: await yt.getChannel(channelId) };
+}
+
+/** Resolve canonical channel identity and the exact bounded discovery set for a job. */
+export async function discoverYoutubeChannel(
+  scope: ChannelScope,
+  limit: number,
+): Promise<DiscoveredYouTubeChannel> {
+  const { channel, channelId } = await loadChannel(scope);
+
+  const refs: SourceRef[] = [];
+  for await (const ref of discoverVideos(channel, limit)) refs.push(ref);
+
+  return {
+    channelId,
+    creatorHandle: creatorHandleOf(
+      channel.metadata.vanity_channel_url,
+      channelId,
+    ),
+    displayName: channel.metadata.title,
+    refs,
+  };
+}
+
 /** SourceLoader for YouTube: discovery via Innertube, captions via youtube-transcript. */
 export const youtubeLoader: SourceLoader = {
   async *discover(scope, { limit } = {}) {
-    const yt = await getInnertube();
-    const channel = await yt.getChannel(await resolveChannelId(scope));
-    let feed: VideoFeed = await channel.getVideos();
-    let yielded = 0;
-
-    for (;;) {
-      for (const item of feed.videos) {
-        // Uploads arrive as LockupView (`content_id`) on current YouTube, Video (`video_id`) on
-        // older layouts; both are identity only, which is all a SourceRef carries.
-        const videoId = videoIdOf(item);
-        if (!videoId) continue;
-        if (limit !== undefined && yielded >= limit) return;
-        yielded++;
-        yield { kind: "youtube_video", externalId: videoId };
-      }
-      if (!feed.has_continuation) return;
-      feed = await feed.getContinuation();
-    }
+    const { channel } = await loadChannel(scope);
+    yield* discoverVideos(channel, limit);
   },
 
   async loadTranscript(ref): Promise<Transcript> {

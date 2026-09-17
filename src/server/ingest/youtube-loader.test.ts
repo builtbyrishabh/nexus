@@ -6,7 +6,12 @@ import {
 } from "youtube-transcript";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { toSeconds, toVideoId, youtubeLoader } from "~/server/ingest/youtube-loader";
+import {
+  creatorHandleOf,
+  toSeconds,
+  toVideoId,
+  youtubeLoader,
+} from "~/server/ingest/youtube-loader";
 
 describe("toVideoId — one identity for URL or ID", () => {
   it("passes a bare 11-char video ID through", () => {
@@ -40,6 +45,22 @@ describe("toVideoId — one identity for URL or ID", () => {
     expect(() => toVideoId("not a video")).toThrow();
     expect(() => toVideoId("https://example.com/watch?v=UF8uR6Z6KLc")).toThrow();
     expect(() => toVideoId("https://www.youtube.com/watch?v=too-short")).toThrow();
+  });
+});
+
+describe("creatorHandleOf — canonical creator identity", () => {
+  it("uses YouTube's canonical vanity handle", () => {
+    expect(
+      creatorHandleOf(
+        "https://www.youtube.com/@AlexHormozi",
+        "UC-fallback",
+      ),
+    ).toBe("alexhormozi");
+  });
+
+  it("falls back to the stable channel id", () => {
+    expect(creatorHandleOf(undefined, "UC-stable")).toBe("UC-stable");
+    expect(creatorHandleOf("not a url", "UC-stable")).toBe("UC-stable");
   });
 });
 

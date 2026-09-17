@@ -3,8 +3,9 @@
  * for Docker builds.
  */
 import "./src/env.js";
+import { withWorkflow } from "workflow/next";
 
 /** @type {import("next").NextConfig} */
 const config = {};
 
-export default config;
+export default withWorkflow(config);
