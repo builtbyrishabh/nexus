@@ -5,12 +5,14 @@ import { TRPCError } from "@trpc/server";
 import { createUIMessageStreamResponse } from "ai";
 
 import { parseChatRequest } from "~/app/api/chat/request";
+import { CHAT_QUOTA_ERROR } from "~/lib/chat-limits";
 import { assertThreadOwner } from "~/server/chat/threads";
 import {
   loadSourceLibrary,
   type NexusRequestContext,
 } from "~/server/domain/source-library";
 import { mastra, NEXUS_MAX_STEPS } from "~/server/mastra";
+import { consumeDailyQuota } from "~/server/usage-quota";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -31,6 +33,10 @@ export async function POST(req: Request) {
       return new Response("Not found", { status: 404 });
     }
     throw error;
+  }
+
+  if (!(await consumeDailyQuota(userId, "chat"))) {
+    return new Response(CHAT_QUOTA_ERROR, { status: 429 });
   }
 
   const library = await loadSourceLibrary(userId);

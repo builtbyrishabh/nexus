@@ -1,6 +1,8 @@
 import { safeValidateUIMessages, type UIMessage } from "ai";
 import { z } from "zod";
 
+import { CHAT_LENGTH_ERROR, MAX_CHAT_TEXT_LENGTH } from "~/lib/chat-limits";
+
 const bodySchema = z
   .object({
     message: z.unknown(),
@@ -37,6 +39,9 @@ export async function parseChatRequest(body: unknown): Promise<ParseResult> {
     !textParts.some((part) => part.text.trim().length > 0)
   ) {
     return { ok: false, error: "The request must contain a user text message" };
+  }
+  if (textParts.reduce((length, part) => length + part.text.length, 0) > MAX_CHAT_TEXT_LENGTH) {
+    return { ok: false, error: CHAT_LENGTH_ERROR };
   }
 
   return {

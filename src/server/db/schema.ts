@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   customType,
+  date,
   index,
   integer,
   jsonb,
@@ -152,6 +153,18 @@ export const channelImportItem = createTable(
     uniqueIndex("channel_import_item_job_position_idx").on(t.jobId, t.position),
     index("channel_import_item_job_status_idx").on(t.jobId, t.status),
   ],
+);
+
+/** Atomic per-user counters that bound paid work on public deployments. */
+export const dailyUsage = createTable(
+  "daily_usage",
+  {
+    userId: text("user_id").notNull(),
+    day: date("day").notNull(),
+    action: text("action").notNull(),
+    count: integer("count").notNull().default(1),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.day, t.action] })],
 );
 
 /**

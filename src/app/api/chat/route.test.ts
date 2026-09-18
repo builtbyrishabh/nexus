@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   createUIMessageStreamResponse: vi.fn(() => new Response("stream")),
   stream: new ReadableStream(),
   mastra: { id: "mastra" },
+  consumeDailyQuota: vi.fn(),
 }));
 
 vi.mock("@clerk/nextjs/server", () => ({ auth: mocks.auth }));
@@ -32,6 +33,9 @@ vi.mock("~/server/chat/threads", () => ({
 }));
 vi.mock("~/server/domain/source-library", () => ({
   loadSourceLibrary: mocks.loadSourceLibrary,
+}));
+vi.mock("~/server/usage-quota", () => ({
+  consumeDailyQuota: mocks.consumeDailyQuota,
 }));
 
 const { POST } = await import("~/app/api/chat/route");
@@ -63,6 +67,7 @@ describe("POST /api/chat", () => {
       ],
     });
     mocks.handleChatStream.mockResolvedValue(mocks.stream);
+    mocks.consumeDailyQuota.mockResolvedValue(true);
   });
 
   it("authenticates ownership and delegates the native message to Mastra", async () => {
@@ -115,6 +120,17 @@ describe("POST /api/chat", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(404);
+    expect(mocks.loadSourceLibrary).not.toHaveBeenCalled();
+    expect(mocks.handleChatStream).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 before invoking paid work when the daily quota is exhausted", async () => {
+    mocks.consumeDailyQuota.mockResolvedValue(false);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(429);
+    expect(mocks.consumeDailyQuota).toHaveBeenCalledWith("user-1", "chat");
     expect(mocks.loadSourceLibrary).not.toHaveBeenCalled();
     expect(mocks.handleChatStream).not.toHaveBeenCalled();
   });

@@ -36,7 +36,7 @@ The route does not recall history, assemble model messages, control tool phases,
 - Stored source author and title metadata let the model attribute a view without guessing or
   imitating the creator; a missing author is never inferred from the title or question.
 - Missing evidence is handled by the system prompt. There is no exact refusal sentence in code.
-- Memory loads the complete thread for now with `lastMessages: Number.MAX_SAFE_INTEGER`.
+- Memory sends the latest 20 messages to the model, bounding context cost while the full thread remains persisted.
 - Mastra generates thread titles natively from the first turn.
 
 ## Retrieval
