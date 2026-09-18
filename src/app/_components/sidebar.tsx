@@ -32,52 +32,85 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex h-dvh w-64 shrink-0 flex-col border-r border-line bg-surface">
-      <div className="flex items-center justify-between px-4 py-4">
-        <Link href="/chats" className="text-lg font-semibold text-ink">
-          Nexus
-        </Link>
-      </div>
+    <>
+      <aside className="hidden h-dvh w-64 shrink-0 flex-col border-r border-line bg-surface md:flex">
+        <div className="flex items-center justify-between px-4 py-4">
+          <Link href="/chats" className="text-lg font-semibold text-ink">
+            Nexus
+          </Link>
+        </div>
 
-      <div className="px-3">
-        <button
-          type="button"
-          onClick={newChat}
-          className="flex w-full items-center gap-2 rounded-lg border border-line bg-elevated px-3 py-2 text-sm font-medium text-ink transition hover:border-accent"
+        <div className="px-3">
+          <button
+            type="button"
+            onClick={newChat}
+            className="flex w-full items-center gap-2 rounded-lg border border-line bg-elevated px-3 py-2 text-sm font-medium text-ink transition hover:border-accent"
+          >
+            <span className="text-accent">＋</span> New chat
+          </button>
+          <Link
+            href="/sources"
+            className={`mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
+              pathname === "/sources"
+                ? "bg-accent-soft text-accent-ink"
+                : "text-muted hover:bg-elevated hover:text-ink"
+            }`}
+          >
+            <span aria-hidden="true">▤</span> Sources
+          </Link>
+        </div>
+
+        <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+          <p className="px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted">
+            Chats
+          </p>
+          {threads.isLoading ? (
+            <p className="px-3 py-2 text-sm text-muted">Loading…</p>
+          ) : threads.data && threads.data.length > 0 ? (
+            <div className="flex flex-col gap-0.5">
+              {threads.data.map((thread) => (
+                <ChatItem
+                  key={thread.id}
+                  thread={thread}
+                  isActive={onChats && activeId === thread.id}
+                  onSelect={selectThread}
+                  onDeleted={(id) => {
+                    if (activeId === id) void setActiveId(null);
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="px-3 py-2 text-sm text-muted">No chats yet.</p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 border-t border-line px-4 py-3">
+          <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
+          <span className="text-sm text-muted">Account</span>
+        </div>
+      </aside>
+      <nav className="fixed inset-x-0 bottom-0 z-30 flex h-16 items-center justify-around border-t border-line bg-surface/95 px-4 backdrop-blur md:hidden">
+        <Link
+          href="/chats"
+          className={`rounded-lg px-4 py-2 text-sm font-medium ${
+            onChats ? "bg-accent-soft text-accent-ink" : "text-muted"
+          }`}
         >
-          <span className="text-accent">＋</span> New chat
-        </button>
-      </div>
-
-      <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-        <p className="px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted">
           Chats
-        </p>
-        {threads.isLoading ? (
-          <p className="px-3 py-2 text-sm text-muted">Loading…</p>
-        ) : threads.data && threads.data.length > 0 ? (
-          <div className="flex flex-col gap-0.5">
-            {threads.data.map((thread) => (
-              <ChatItem
-                key={thread.id}
-                thread={thread}
-                isActive={onChats && activeId === thread.id}
-                onSelect={selectThread}
-                onDeleted={(id) => {
-                  if (activeId === id) void setActiveId(null);
-                }}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="px-3 py-2 text-sm text-muted">No chats yet.</p>
-        )}
-      </div>
-
-      <div className="flex items-center gap-2 border-t border-line px-4 py-3">
+        </Link>
+        <Link
+          href="/sources"
+          className={`rounded-lg px-4 py-2 text-sm font-medium ${
+            pathname === "/sources"
+              ? "bg-accent-soft text-accent-ink"
+              : "text-muted"
+          }`}
+        >
+          Sources
+        </Link>
         <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
-        <span className="text-sm text-muted">Account</span>
-      </div>
-    </aside>
+      </nav>
+    </>
   );
 }
