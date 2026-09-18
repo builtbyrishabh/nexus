@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "~/server/db";
-import { source, userSource } from "~/server/db/schema";
+import { source } from "~/server/db/schema";
 
 export const allowedCreatorSchema = z.object({
   handle: z.string().min(1),
@@ -24,7 +24,7 @@ type CreatorSource = {
   displayName: string | null;
 };
 
-/** Collapse a user's member sources into a stable, unique creator roster. */
+/** Collapse a user's sources into a stable, unique creator roster. */
 export function deriveAllowedCreators(rows: CreatorSource[]): AllowedCreator[] {
   const creators = new Map<string, Set<string>>();
 
@@ -50,7 +50,7 @@ export function deriveAllowedCreators(rows: CreatorSource[]): AllowedCreator[] {
     }));
 }
 
-/** Load the searchable-library facts derived from this user's source memberships. */
+/** Load the searchable-library facts derived from this user's owned sources. */
 export async function loadSourceLibrary(
   userId: string,
 ): Promise<Pick<NexusRequestContext, "hasSources" | "allowedCreators">> {
@@ -59,9 +59,8 @@ export async function loadSourceLibrary(
       handle: source.creatorHandle,
       displayName: source.author,
     })
-    .from(userSource)
-    .innerJoin(source, eq(source.id, userSource.sourceId))
-    .where(eq(userSource.userId, userId));
+    .from(source)
+    .where(eq(source.userId, userId));
 
   return {
     hasSources: rows.length > 0,

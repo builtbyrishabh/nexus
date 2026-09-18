@@ -3,11 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const query = {
     from: vi.fn(),
-    innerJoin: vi.fn(),
     where: vi.fn(),
   };
   query.from.mockReturnValue(query);
-  query.innerJoin.mockReturnValue(query);
 
   return {
     query,
@@ -24,7 +22,7 @@ const { deriveAllowedCreators, loadSourceLibrary } = await import(
 describe("source library", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("derives one stable creator roster from member sources", () => {
+  it("derives one stable creator roster from owned sources", () => {
     expect(
       deriveAllowedCreators([
         { handle: "naval", displayName: null },
@@ -39,7 +37,7 @@ describe("source library", () => {
     ]);
   });
 
-  it("loads roster rows through the requested user's memberships", async () => {
+  it("loads roster rows from the requested user's sources", async () => {
     mocks.query.where.mockResolvedValue([
       { handle: "alex", displayName: "Alex Hormozi" },
     ]);
@@ -54,7 +52,7 @@ describe("source library", () => {
     expect(mocks.query.where).toHaveBeenCalledOnce();
   });
 
-  it("keeps membership separate from creator tagging", async () => {
+  it("keeps source ownership separate from creator tagging", async () => {
     mocks.query.where.mockResolvedValue([
       { handle: null, displayName: "Unknown" },
     ]);
