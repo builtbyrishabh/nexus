@@ -7,12 +7,19 @@ import {
   channelImportItem,
 } from "~/server/db/schema";
 import {
+  CHANNEL_IMPORT_LIMIT,
   canRetryImport,
   importErrorMessage,
   summarizeImport,
 } from "~/server/domain/channel-import";
+import { discoverYoutubeChannel } from "~/server/ingest/youtube-loader";
 import { runChannelImport } from "~/workflows/channel-import";
 
+const restartableJobStatuses: Array<"queued" | "completed" | "failed"> = [
+  "queued",
+  "completed",
+  "failed",
+];
 const activeJobStatuses: Array<"queued" | "discovering" | "processing"> = [
   "queued",
   "discovering",
@@ -26,33 +33,15 @@ const terminalJobStatuses: Array<"completed" | "failed"> = [
 export class ImportNotRetryableError extends Error {}
 export class ImportNotFoundError extends Error {}
 
-/** Persist and enqueue a durable import; the workflow continues after this call returns. */
-export async function startChannelImport(userId: string, scope: string) {
-  const [job] = await db
-    .insert(channelImport)
-    .values({ userId, scope: scope.trim() })
-    .returning({ id: channelImport.id });
-  if (!job) throw new Error("Failed to create the channel import");
-
-  try {
-    const run = await start(runChannelImport, [job.id]);
-    await db
-      .update(channelImport)
-      .set({ workflowRunId: run.runId })
-      .where(eq(channelImport.id, job.id));
-  } catch (error) {
-    await db
-      .update(channelImport)
-      .set({
-        status: "failed",
-        error: importErrorMessage(error),
-        finishedAt: new Date(),
-      })
-      .where(eq(channelImport.id, job.id));
-    throw error;
-  }
-
-  return { jobId: job.id };
+/** Resolve the canonical channel identity before a user confirms paid/long-running work. */
+export async function previewChannelImport(scope: string) {
+  const resolved = await discoverYoutubeChannel(scope.trim(), 1);
+  return {
+    channelId: resolved.channelId,
+    creatorHandle: resolved.creatorHandle,
+    displayName: resolved.displayName ?? resolved.creatorHandle,
+    importLimit: CHANNEL_IMPORT_LIMIT,
+  };
 }
 
 export function combineImportHistory<T extends { createdAt: Date }>(
@@ -64,53 +53,102 @@ export function combineImportHistory<T extends { createdAt: Date }>(
   );
 }
 
-/** All active imports plus recent terminal history; item counts remain derived. */
+/** Active jobs plus recent history, with counters derived from child rows. */
 export async function listChannelImports(userId: string) {
   const [active, recentTerminal] = await Promise.all([
-    db
-      .select()
-      .from(channelImport)
-      .where(
-        and(
-          eq(channelImport.userId, userId),
-          inArray(channelImport.status, activeJobStatuses),
-        ),
-      )
-      .orderBy(desc(channelImport.createdAt)),
-    db
-      .select()
-      .from(channelImport)
-      .where(
-        and(
-          eq(channelImport.userId, userId),
-          inArray(channelImport.status, terminalJobStatuses),
-        ),
-      )
-      .orderBy(desc(channelImport.createdAt))
-      .limit(20),
+    db.query.channelImport.findMany({
+      where: and(
+        eq(channelImport.userId, userId),
+        inArray(channelImport.status, activeJobStatuses),
+      ),
+      orderBy: [desc(channelImport.createdAt)],
+    }),
+    db.query.channelImport.findMany({
+      where: and(
+        eq(channelImport.userId, userId),
+        inArray(channelImport.status, terminalJobStatuses),
+      ),
+      orderBy: [desc(channelImport.createdAt)],
+      limit: 20,
+    }),
   ]);
   const jobs = combineImportHistory(active, recentTerminal);
-
   if (jobs.length === 0) return [];
 
-  const items = await db
-    .select({ jobId: channelImportItem.jobId, status: channelImportItem.status })
+  const itemRows = await db
+    .select({
+      jobId: channelImportItem.jobId,
+      status: channelImportItem.status,
+    })
     .from(channelImportItem)
-    .where(inArray(channelImportItem.jobId, jobs.map((job) => job.id)));
-  const itemsByJob = new Map<string, typeof items>();
-  for (const item of items) {
-    const jobItems = itemsByJob.get(item.jobId) ?? [];
-    jobItems.push(item);
-    itemsByJob.set(item.jobId, jobItems);
+    .where(
+      inArray(
+        channelImportItem.jobId,
+        jobs.map((job) => job.id),
+      ),
+    );
+  const itemsByJob = new Map<string, typeof itemRows>();
+  for (const item of itemRows) {
+    const items = itemsByJob.get(item.jobId) ?? [];
+    items.push(item);
+    itemsByJob.set(item.jobId, items);
   }
 
   return jobs.map((job) => ({
     id: job.id,
     scope: job.scope,
-    creatorHandle: job.creatorHandle,
     status: job.status,
+    creatorHandle: job.creatorHandle,
+    error: job.error,
+    createdAt: job.createdAt,
+    startedAt: job.startedAt,
+    finishedAt: job.finishedAt,
     summary: summarizeImport(itemsByJob.get(job.id) ?? []),
   }));
+}
+
+/** Enqueue first, then persist the run ID as optional operational metadata. */
+export async function launchChannelImport(jobId: string): Promise<void> {
+  let run: Awaited<ReturnType<typeof start>>;
+  try {
+    run = await start(runChannelImport, [jobId]);
+  } catch (error) {
+    await db
+      .update(channelImport)
+      .set({
+        status: "failed",
+        error: importErrorMessage(error),
+        finishedAt: new Date(),
+      })
+      .where(eq(channelImport.id, jobId));
+    throw error;
+  }
+
+  try {
+    await db
+      .update(channelImport)
+      .set({ workflowRunId: run.runId })
+      .where(eq(channelImport.id, jobId));
+  } catch (error) {
+    // The workflow was accepted. A diagnostic write must not turn that truth into a failed job.
+    console.error(
+      `[channel-import] workflow ${run.runId} started for ${jobId}, but its run ID was not saved`,
+      error,
+    );
+  }
+}
+
+/** Persist and enqueue a durable import; the workflow continues after this call returns. */
+export async function startChannelImport(userId: string, scope: string) {
+  const [job] = await db
+    .insert(channelImport)
+    .values({ userId, scope: scope.trim() })
+    .returning({ id: channelImport.id });
+  if (!job) throw new Error("Failed to create the channel import");
+
+  await launchChannelImport(job.id);
+
+  return { jobId: job.id };
 }
 
 /** Load one import through its owner predicate; foreign IDs are indistinguishable from missing. */
@@ -180,7 +218,7 @@ export async function retryFailedChannelImport(userId: string, jobId: string) {
         and(
           eq(channelImport.id, jobId),
           eq(channelImport.userId, userId),
-          inArray(channelImport.status, terminalJobStatuses),
+          inArray(channelImport.status, restartableJobStatuses),
         ),
       )
       .returning({ id: channelImport.id });
@@ -201,23 +239,7 @@ export async function retryFailedChannelImport(userId: string, jobId: string) {
 
   if (!claimed) throw new ImportNotRetryableError();
 
-  try {
-    const run = await start(runChannelImport, [jobId]);
-    await db
-      .update(channelImport)
-      .set({ workflowRunId: run.runId })
-      .where(eq(channelImport.id, jobId));
-  } catch (error) {
-    await db
-      .update(channelImport)
-      .set({
-        status: "failed",
-        error: importErrorMessage(error),
-        finishedAt: new Date(),
-      })
-      .where(eq(channelImport.id, jobId));
-    throw error;
-  }
+  await launchChannelImport(jobId);
 
   return { jobId };
 }

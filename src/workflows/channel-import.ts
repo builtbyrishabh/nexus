@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { FatalError } from "workflow";
+import { createHook, FatalError } from "workflow";
 
 import { db } from "~/server/db";
 import {
@@ -7,7 +7,11 @@ import {
   channelImportItem,
   source,
 } from "~/server/db/schema";
-import { importErrorMessage } from "~/server/domain/channel-import";
+import {
+  CHANNEL_IMPORT_LIMIT,
+  importErrorMessage,
+} from "~/server/domain/channel-import";
+import { attachSourceToUser } from "~/server/domain/source-library";
 import type { SourceRef } from "~/server/domain/types";
 import { IN_FLIGHT } from "~/server/ingest/channel";
 import { ingestSource } from "~/server/ingest/pipeline";
@@ -15,8 +19,6 @@ import {
   discoverYoutubeChannel,
   youtubeLoader,
 } from "~/server/ingest/youtube-loader";
-
-const DISCOVERY_LIMIT = 50;
 
 type ImportWorkItem = { id: string; externalId: string };
 
@@ -31,7 +33,7 @@ export async function settleImportItems(
   steps: ImportItemSteps,
 ): Promise<void> {
   for (let index = 0; index < items.length; index += IN_FLIGHT) {
-    await Promise.all(
+    const results = await Promise.allSettled(
       items.slice(index, index + IN_FLIGHT).map(async (item) => {
         try {
           await steps.process(item);
@@ -40,12 +42,17 @@ export async function settleImportItems(
         }
       }),
     );
+    const rejected = results.find((result) => result.status === "rejected");
+    if (rejected?.status === "rejected") throw rejected.reason;
   }
 }
 
 /** Durable orchestration: discover once, then settle videos in groups of three. */
 export async function runChannelImport(jobId: string): Promise<void> {
   "use workflow";
+
+  using activeRun = createHook({ token: `channel-import:${jobId}` });
+  if (await activeRun.getConflict()) return;
 
   try {
     const items = await prepareImport(jobId);
@@ -97,7 +104,7 @@ async function prepareImport(jobId: string): Promise<ImportWorkItem[]> {
     .set({ status: "discovering", startedAt: job.startedAt ?? new Date() })
     .where(eq(channelImport.id, jobId));
 
-  const discovered = await discoverYoutubeChannel(job.scope, DISCOVERY_LIMIT);
+  const discovered = await discoverYoutubeChannel(job.scope, CHANNEL_IMPORT_LIMIT);
   if (discovered.refs.length === 0) {
     throw new FatalError("The channel has no discoverable videos");
   }
@@ -162,26 +169,23 @@ async function processImportVideo(item: ImportWorkItem): Promise<void> {
       ...(job.creatorHandle ? { creatorHandle: job.creatorHandle } : {}),
     });
 
-    await db.transaction(async (tx) => {
-      await tx
+    await attachSourceToUser(job.userId, outcome.sourceId);
+    if (job.creatorHandle) {
+      await db
         .update(source)
-        .set({
-          userId: job.userId,
-          ...(job.creatorHandle ? { creatorHandle: job.creatorHandle } : {}),
-        })
+        .set({ creatorHandle: job.creatorHandle })
         .where(eq(source.id, outcome.sourceId));
-
-      await tx
-        .update(channelImportItem)
-        .set({
-          status: outcome.status,
-          sourceId: outcome.sourceId,
-          title: outcome.title,
-          skipReason: outcome.status === "skipped" ? outcome.reason : null,
-          error: null,
-        })
-        .where(eq(channelImportItem.id, item.id));
-    });
+    }
+    await db
+      .update(channelImportItem)
+      .set({
+        status: outcome.status,
+        sourceId: outcome.sourceId,
+        title: outcome.title,
+        skipReason: outcome.status === "skipped" ? outcome.reason : null,
+        error: null,
+      })
+      .where(eq(channelImportItem.id, item.id));
   } catch (error) {
     await db
       .update(channelImportItem)

@@ -1,116 +1,164 @@
 "use client";
 
 import { UserButton } from "@clerk/nextjs";
+import {
+  Library,
+  MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Sparkles,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryState } from "nuqs";
 
 import { ChatItem } from "~/app/_components/chat-item";
+import { ThemeToggle } from "~/app/_components/theme-toggle";
+import {
+  Sidebar as SidebarRoot,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  useSidebar,
+} from "~/components/ui/sidebar";
 import { api } from "~/trpc/react";
 
-/**
- * The app-shell sidebar: new chat, the thread list, and the Clerk user button. It shares the `?id=`
- * query param with the chats page (same nuqs adapter), so selecting a thread on `/chats` is a shallow
- * flip — no route change, no remount.
- */
+/** Responsive app navigation with persistent desktop collapse and a mobile drawer. */
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { setOpenMobile, state, toggleSidebar } = useSidebar();
   const [activeId, setActiveId] = useQueryState("id");
   const threads = api.chats.list.useQuery();
 
   const onChats = pathname === "/chats";
 
   function newChat() {
+    setOpenMobile(false);
     if (onChats) void setActiveId(null);
     else router.push("/chats");
   }
 
   function selectThread(id: string) {
+    setOpenMobile(false);
     if (onChats) void setActiveId(id);
     else router.push(`/chats?id=${id}`);
   }
 
   return (
-    <>
-      <aside className="hidden h-dvh w-64 shrink-0 flex-col border-r border-line bg-surface md:flex">
-        <div className="flex items-center justify-between px-4 py-4">
-          <Link href="/chats" className="text-lg font-semibold text-ink">
-            Nexus
-          </Link>
-        </div>
+    <SidebarRoot collapsible="icon">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild size="lg" tooltip="Nexus">
+              <Link href="/chats" onClick={() => setOpenMobile(false)}>
+                <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
+                  <Sparkles className="size-4" />
+                </span>
+                <span className="text-base font-semibold">Nexus</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={newChat} tooltip="New chat">
+              <Plus />
+              <span>New chat</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
 
-        <div className="px-3">
-          <button
-            type="button"
-            onClick={newChat}
-            className="flex w-full items-center gap-2 rounded-lg border border-line bg-elevated px-3 py-2 text-sm font-medium text-ink transition hover:border-accent"
-          >
-            <span className="text-accent">＋</span> New chat
-          </button>
-          <Link
-            href="/sources"
-            className={`mt-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
-              pathname === "/sources"
-                ? "bg-accent-soft text-accent-ink"
-                : "text-muted hover:bg-elevated hover:text-ink"
-            }`}
-          >
-            <span aria-hidden="true">▤</span> Sources
-          </Link>
-        </div>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={onChats} tooltip="Chats">
+                  <Link href="/chats" onClick={() => setOpenMobile(false)}>
+                    <MessageSquare />
+                    <span>Chats</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/sources"}
+                  tooltip="Sources"
+                >
+                  <Link href="/sources" onClick={() => setOpenMobile(false)}>
+                    <Library />
+                    <span>Sources</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-          <p className="px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted">
-            Chats
-          </p>
-          {threads.isLoading ? (
-            <p className="px-3 py-2 text-sm text-muted">Loading…</p>
-          ) : threads.data && threads.data.length > 0 ? (
-            <div className="flex flex-col gap-0.5">
-              {threads.data.map((thread) => (
-                <ChatItem
-                  key={thread.id}
-                  thread={thread}
-                  isActive={onChats && activeId === thread.id}
-                  onSelect={selectThread}
-                  onDeleted={(id) => {
-                    if (activeId === id) void setActiveId(null);
-                  }}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="px-3 py-2 text-sm text-muted">No chats yet.</p>
-          )}
-        </div>
+        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+          <SidebarGroupLabel>Recent chats</SidebarGroupLabel>
+          <SidebarGroupContent>
+            {threads.isLoading ? (
+              <p className="px-2 py-2 text-sm text-muted-foreground">Loading…</p>
+            ) : threads.data && threads.data.length > 0 ? (
+              <div className="flex flex-col gap-0.5">
+                {threads.data.map((thread) => (
+                  <ChatItem
+                    key={thread.id}
+                    thread={thread}
+                    isActive={onChats && activeId === thread.id}
+                    onSelect={selectThread}
+                    onDeleted={(id) => {
+                      if (activeId === id) void setActiveId(null);
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="px-2 py-2 text-sm text-muted-foreground">
+                No chats yet.
+              </p>
+            )}
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
 
-        <div className="flex items-center gap-2 border-t border-line px-4 py-3">
-          <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
-          <span className="text-sm text-muted">Account</span>
-        </div>
-      </aside>
-      <nav className="fixed inset-x-0 bottom-0 z-30 flex h-16 items-center justify-around border-t border-line bg-surface/95 px-4 backdrop-blur md:hidden">
-        <Link
-          href="/chats"
-          className={`rounded-lg px-4 py-2 text-sm font-medium ${
-            onChats ? "bg-accent-soft text-accent-ink" : "text-muted"
-          }`}
-        >
-          Chats
-        </Link>
-        <Link
-          href="/sources"
-          className={`rounded-lg px-4 py-2 text-sm font-medium ${
-            pathname === "/sources"
-              ? "bg-accent-soft text-accent-ink"
-              : "text-muted"
-          }`}
-        >
-          Sources
-        </Link>
-        <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
-      </nav>
-    </>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <ThemeToggle />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Account" size="lg">
+              <div>
+                <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
+                <span>Account</span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem className="hidden md:block">
+            <SidebarMenuButton
+              onClick={toggleSidebar}
+              tooltip={state === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
+            >
+              {state === "expanded" ? <PanelLeftClose /> : <PanelLeftOpen />}
+              <span>
+                {state === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
+              </span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </SidebarRoot>
   );
 }

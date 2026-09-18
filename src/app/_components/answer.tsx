@@ -1,8 +1,9 @@
 "use client";
 
 import { getToolName, isToolUIPart, type UIMessage } from "ai";
-import { useEffect, useRef, useState } from "react";
+import { type ComponentProps, useEffect, useRef, useState } from "react";
 
+import { MessageResponse } from "~/components/ai-elements/message";
 import {
   catalogSearchResultSchema,
   type CatalogEvidence,
@@ -53,6 +54,11 @@ export function textOf(message: UIMessage): string {
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("");
+}
+
+/** Plain answer text for the clipboard; citation markers are UI metadata, not prose. */
+export function copyableAnswerText(text: string): string {
+  return text.replace(/\s*\[cite:[^\]\s]+\]/g, "");
 }
 
 /** Resolve only the unique evidence IDs actually referenced by one answer. */
@@ -111,19 +117,17 @@ export function groupCitedSources(
 /** Compact, cited-only source list shown below one completed answer. */
 export function SourcesFooter({
   sources,
-  onSourceClick,
 }: {
   sources: CatalogEvidence[];
-  onSourceClick?: (citation: CatalogEvidence) => void;
 }) {
   if (sources.length === 0) return null;
   const groups = groupCitedSources(sources);
 
   return (
-    <footer className="mt-4 border-t border-line pt-3">
+    <footer className="mt-5 border-t pt-3">
       <div className="mb-1.5 flex items-center justify-between text-xs font-medium">
         <span>Sources</span>
-        <span className="font-normal text-muted">
+        <span className="font-normal text-muted-foreground">
           {groups.length} {groups.length === 1 ? "video" : "videos"} ·{" "}
           {sources.length} cited {sources.length === 1 ? "moment" : "moments"}
         </span>
@@ -132,33 +136,38 @@ export function SourcesFooter({
         {groups.map((group) => (
           <div
             key={group.key}
-            className="grid grid-cols-1 items-center gap-2 rounded-lg px-2 py-2 hover:bg-canvas sm:grid-cols-[minmax(0,1fr)_auto]"
+            className="grid grid-cols-1 items-center gap-2 rounded-lg px-2 py-2 hover:bg-muted sm:grid-cols-[minmax(0,1fr)_auto]"
           >
-            <button
-              type="button"
-              onClick={() => onSourceClick?.(group.citations[0]!)}
-              className="min-w-0 border-0 bg-transparent p-0 text-left"
+            <a
+              href={group.citations[0]!.url}
+              target="_blank"
+              rel="noreferrer"
+              className="group/source min-w-0 text-left no-underline"
             >
-              <span className="block truncate text-xs font-medium">
-                {group.title}
+              <span className="flex items-center gap-1 text-xs font-medium text-foreground group-hover/source:underline">
+                <span className="truncate">{group.title}</span>
+                <span aria-hidden="true" className="shrink-0 text-muted-foreground">
+                  ↗
+                </span>
               </span>
               {group.author && (
-                <span className="mt-0.5 block text-xs text-muted">
+                <span className="mt-0.5 block text-xs text-muted-foreground">
                   {group.author} · YouTube
                 </span>
               )}
-            </button>
+            </a>
             <span className="flex flex-wrap gap-1 sm:justify-end">
               {group.citations.map((citation) => (
-                <button
+                <a
                   key={citation.citationId}
-                  type="button"
-                  onClick={() => onSourceClick?.(citation)}
-                  className="rounded-md border-0 bg-accent-soft px-1.5 py-1 text-xs font-semibold text-accent-ink"
-                  aria-label={`Open ${group.title} at ${citation.timestamp ?? "source"}`}
+                  href={citation.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md bg-primary/10 px-1.5 py-1 text-xs font-semibold text-primary no-underline hover:bg-primary/15"
+                  aria-label={`Watch ${group.title} at ${citation.timestamp ?? "source"} on YouTube`}
                 >
                   {citation.timestamp ?? "Source"}
-                </button>
+                </a>
               ))}
             </span>
           </div>
@@ -204,17 +213,17 @@ export function SourceDetail({
       }}
     >
       <aside
-        className="fixed inset-x-0 bottom-0 flex max-h-[85vh] flex-col rounded-t-2xl bg-elevated shadow-2xl sm:inset-y-0 sm:left-auto sm:w-full sm:max-w-md sm:rounded-none"
+        className="fixed inset-x-0 bottom-0 flex max-h-[85vh] flex-col rounded-t-2xl bg-card text-card-foreground shadow-2xl sm:inset-y-0 sm:left-auto sm:w-full sm:max-w-md sm:rounded-none"
       >
-        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-line sm:hidden" />
-        <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4 sm:px-6 sm:py-5">
+        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-border sm:hidden" />
+        <header className="flex items-start justify-between gap-4 border-b px-5 py-4 sm:px-6 sm:py-5">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Cited source
             </p>
             <h2
               id={`source-${citation.citationId}`}
-              className="mt-1 text-base font-semibold leading-snug text-ink"
+              className="mt-1 text-base font-semibold leading-snug text-foreground"
             >
               {citation.title}
             </h2>
@@ -223,7 +232,7 @@ export function SourceDetail({
             type="button"
             onClick={onClose}
             autoFocus
-            className="grid size-9 shrink-0 place-items-center rounded-lg border-0 bg-transparent text-xl text-muted hover:bg-surface hover:text-ink"
+            className="grid size-9 shrink-0 place-items-center rounded-lg border-0 bg-transparent text-xl text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Close source details"
           >
             ×
@@ -231,35 +240,35 @@ export function SourceDetail({
         </header>
 
         <div className="overflow-y-auto px-5 pb-6 sm:px-6">
-          <div className="flex items-center justify-between gap-4 py-4 text-sm text-muted">
+          <div className="flex items-center justify-between gap-4 py-4 text-sm text-muted-foreground">
             <span>{citation.author ?? "Unknown creator"}</span>
             {citation.timestamp && (
-              <span className="font-semibold text-accent-ink">
+              <span className="font-semibold text-primary">
                 {citation.timestamp}
               </span>
             )}
           </div>
 
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Transcript excerpt
           </h3>
           {citation.rawText ? (
-            <blockquote className="border-l-2 border-accent pl-4 text-sm leading-relaxed text-ink">
+            <blockquote className="border-l-2 border-primary pl-4 text-sm leading-relaxed text-foreground">
               {citation.rawText}
             </blockquote>
           ) : (
-            <p className="text-sm text-muted">
+            <p className="text-sm text-muted-foreground">
               Transcript excerpt unavailable for this older message.
             </p>
           )}
 
           {citation.context && (
             <>
-              <h3 className="mb-2 mt-5 text-xs font-semibold uppercase tracking-wider text-muted">
+              <h3 className="mb-2 mt-5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Why this source was used
               </h3>
-              <div className="rounded-lg bg-surface p-3 text-sm leading-relaxed text-muted">
-                <span className="mb-1 block text-xs font-semibold text-ink">
+              <div className="rounded-lg bg-muted p-3 text-sm leading-relaxed text-muted-foreground">
+                <span className="mb-1 block text-xs font-semibold text-foreground">
                   Generated context · not a quote
                 </span>
                 {citation.context}
@@ -271,7 +280,7 @@ export function SourceDetail({
             href={citation.url}
             target="_blank"
             rel="noreferrer"
-            className="mt-6 flex min-h-11 items-center justify-center rounded-xl bg-ink px-4 text-sm font-semibold text-canvas no-underline"
+            className="mt-6 flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground no-underline"
           >
             Watch on YouTube{citation.timestamp ? ` at ${citation.timestamp}` : ""} ↗
           </a>
@@ -303,7 +312,7 @@ export function CitedAnswer({
         onCitationClick={setSelectedSource}
       />
       {showSources && (
-        <SourcesFooter sources={sources} onSourceClick={setSelectedSource} />
+        <SourcesFooter sources={sources} />
       )}
       {selectedSource && (
         <SourceDetail
@@ -331,27 +340,56 @@ export function AnswerText({
       index + 1,
     ]),
   );
-  const nodes = text.split(/(\[cite:[^\]\s]+\])/g).map((piece, index) => {
-    const marker = /^\[cite:([^\]\s]+)\]$/.exec(piece);
-    if (!marker) return <span key={index}>{piece}</span>;
-
-    const citation = citations.get(marker[1]!);
-    if (!citation) return <span key={index}>{piece}</span>;
-    const citationNumber = citationNumbers.get(citation.citationId)!;
-
-    return (
-      <button
-        key={index}
-        type="button"
-        onClick={() => onCitationClick?.(citation)}
-        className="mx-0.5 inline-grid size-5 place-items-center rounded-md border-0 bg-accent-soft p-0 align-text-top text-xs font-semibold text-accent-ink hover:opacity-80"
-        aria-label={`Open source ${citationNumber}`}
-        title={citation.title}
-      >
-        {citationNumber}
-      </button>
-    );
+  const citationPrefix = "https://nexus.local/citation/";
+  const markdown = text.replace(/\s*\[cite:([^\]\s]+)\]/g, (_marker, id: string) => {
+    const citation = citations.get(id);
+    const number = citation ? citationNumbers.get(citation.citationId) : undefined;
+    return citation && number
+      ? `[${number}](${citationPrefix}${encodeURIComponent(id)})`
+      : "";
   });
 
-  return <p className="whitespace-pre-wrap leading-relaxed">{nodes}</p>;
+  function AnswerLink({
+    href,
+    children,
+    node: _node,
+    ...props
+  }: ComponentProps<"a"> & { node?: unknown }) {
+    if (href?.startsWith(citationPrefix)) {
+      const citationId = decodeURIComponent(href.slice(citationPrefix.length));
+      const citation = citations.get(citationId);
+      const citationNumber = citation
+        ? citationNumbers.get(citation.citationId)
+        : undefined;
+      if (citation && citationNumber) {
+        return (
+          <button
+            type="button"
+            onClick={() => onCitationClick?.(citation)}
+            className="mx-0.5 inline-grid size-5 place-items-center rounded-md border-0 bg-primary/10 p-0 align-text-top text-xs font-semibold text-primary hover:bg-primary/15"
+            aria-label={`Open source ${citationNumber}`}
+            title={citation.title}
+          >
+            {children}
+          </button>
+        );
+      }
+    }
+
+    return (
+      <a href={href} target="_blank" rel="noreferrer" {...props}>
+        {children}
+      </a>
+    );
+  }
+
+  return (
+    <MessageResponse
+      key={[...citationNumbers.keys()].join(":")}
+      className="min-w-0 [overflow-wrap:anywhere] text-[0.975rem] leading-7 [&_[data-streamdown=table]]:max-w-full"
+      components={{ a: AnswerLink }}
+    >
+      {markdown}
+    </MessageResponse>
+  );
 }

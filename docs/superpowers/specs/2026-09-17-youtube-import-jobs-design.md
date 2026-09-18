@@ -14,7 +14,7 @@ const job = await api.imports.byId.query({ jobId });
 await api.imports.retryFailures.mutate({ jobId });
 ```
 
-`start` accepts every YouTube scope the existing loader accepts and returns after the job and durable workflow are created. `byId` returns parent state, derived counts, and ordered video outcomes. `retryFailures` requeues only failures. User identity always comes from Clerk context, never request input.
+`start` accepts every YouTube scope the existing loader accepts and returns after the job and durable workflow are created. `byId` returns parent state, derived counts, and ordered video outcomes. `retryFailures` requeues only failures, or relaunches a job left queued when its original submit was interrupted. User identity always comes from Clerk context, never request input.
 
 Internally the API starts one workflow with only the persisted job ID:
 
@@ -33,7 +33,7 @@ Item states are `queued | processing | ingested | skipped | failed`. Job states 
 
 The workflow runs discovery as one durable step with a hard server-side limit of 50, persists the exact ordered refs, then processes groups of three with `Promise.all`. Each video is its own step. It enters `processing`, reuses `ingestSource`, attaches `user_source` idempotently for both ingested and skipped outcomes, and only then records the terminal item state. A crash after source ingestion is repaired by retry: the pipeline's existing gates return the canonical source ID, then membership is attached.
 
-Workflow infrastructure owns resumption; Postgres owns user-visible state. Per-video provider errors are normalized and persisted rather than escaping and aborting siblings. Step-level automatic retry is disabled for the paid ingestion step so an infrastructure replay cannot silently repeat transcription spend. Explicit retry re-enters the established provenance/hash gates.
+Workflow infrastructure owns resumption; Postgres owns user-visible state. A job-scoped Workflow hook lets only one active run process a job, so safely relaunching an interrupted queued submission cannot duplicate work. The Workflow run ID is diagnostic metadata: failure to save it after a successful enqueue is logged without falsely failing the job. Per-video provider errors are normalized and persisted rather than escaping and aborting siblings, and a batch waits for every started sibling before propagating a failure to record an outcome. Step-level automatic retry is disabled for the paid ingestion step so an infrastructure replay cannot silently repeat transcription spend. Explicit retry re-enters the established provenance/hash gates.
 
 Channel resolution stores a stable creator key from YouTube's canonical vanity URL, falling back to the channel ID. This lets #31's source-library roster work for every accepted scope without trusting an alias supplied by the browser.
 

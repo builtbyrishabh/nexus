@@ -6,6 +6,8 @@ import type {
 export type ImportJobStatus = ChannelImport["status"];
 export type ImportItemStatus = ChannelImportItem["status"];
 
+export const CHANNEL_IMPORT_LIMIT = 50;
+
 export type ImportSummary = {
   discovered: number;
   queued: number;
@@ -32,12 +34,16 @@ export function summarizeImport(
   return summary;
 }
 
-/** Only terminal jobs can restart; completed jobs need at least one failed video. */
+/** Queued jobs can be relaunched after an interrupted submit; completed jobs need failures. */
 export function canRetryImport(
   status: ImportJobStatus,
   failedItems: number,
 ): boolean {
-  return status === "failed" || (status === "completed" && failedItems > 0);
+  return (
+    status === "queued" ||
+    status === "failed" ||
+    (status === "completed" && failedItems > 0)
+  );
 }
 
 /** Persist a bounded, user-safe error string instead of provider objects or stack traces. */

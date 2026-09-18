@@ -15,6 +15,10 @@ function job(
     scope: "UC123",
     creatorHandle: "creator",
     status,
+    error: null,
+    createdAt: new Date("2026-09-18T00:00:00Z"),
+    startedAt: null,
+    finishedAt: null,
     summary,
   };
 }

@@ -2,6 +2,7 @@
 
 import { useQueryState } from "nuqs";
 import { Suspense, useState } from "react";
+import Link from "next/link";
 
 import { ChatConversation } from "~/app/_components/chat-conversation";
 import { PromptBox } from "~/app/_components/prompt-box";
@@ -31,6 +32,7 @@ function ChatsHarness() {
     { threadId: activeId ?? "" },
     { enabled: Boolean(activeId) },
   );
+  const sourcesQuery = api.imports.sources.useQuery();
 
   function startChat(text: string) {
     const threadId = draftThreadId;
@@ -54,13 +56,22 @@ function ChatsHarness() {
   }
 
   if (!activeId) {
+    const firstCreator = sourcesQuery.data?.[0]?.author;
+    const suggestions = firstCreator
+      ? [
+          `What are ${firstCreator}'s most important ideas?`,
+          `What advice does ${firstCreator} repeat most often?`,
+          `Summarize ${firstCreator}'s approach in practical steps.`,
+        ]
+      : [];
+
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4">
         <div className="w-full max-w-2xl">
-          <h1 className="mb-2 text-center text-3xl font-semibold text-ink">
+          <h1 className="mb-2 text-center text-3xl font-semibold text-foreground">
             Ask the catalog
           </h1>
-          <p className="mb-8 text-center text-muted">
+          <p className="mb-8 text-center text-muted-foreground">
             Grounded, cited answers from a creator&apos;s own videos — every claim
             deep-links to the second it was said.
           </p>
@@ -70,6 +81,28 @@ function ChatsHarness() {
             placeholder="Ask a question…"
             onSubmit={startChat}
           />
+          {sourcesQuery.data?.length === 0 ? (
+            <div className="mt-5 text-center text-sm text-muted-foreground">
+              Your library is empty.{" "}
+              <Link href="/sources" className="font-medium text-primary hover:underline">
+                Add your first source
+              </Link>{" "}
+              to get grounded answers.
+            </div>
+          ) : suggestions.length > 0 ? (
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              {suggestions.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => startChat(suggestion)}
+                  className="rounded-full border bg-card px-3 py-1.5 text-sm text-muted-foreground transition hover:border-primary/30 hover:text-foreground"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -95,8 +128,8 @@ function ChatsHarness() {
 function ChatSkeleton() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-8">
-      <div className="h-10 w-2/3 animate-pulse self-end rounded-2xl bg-surface" />
-      <div className="h-24 w-4/5 animate-pulse rounded-2xl bg-surface" />
+      <div className="h-10 w-2/3 animate-pulse self-end rounded-2xl bg-muted" />
+      <div className="h-24 w-4/5 animate-pulse rounded-2xl bg-muted" />
     </div>
   );
 }

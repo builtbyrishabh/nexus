@@ -24,7 +24,7 @@ describe("retrieval source-library scope", () => {
     mocks.rerankDocuments.mockResolvedValue([]);
   });
 
-  it("filters dense and sparse candidates by source owner and creator before ranking", async () => {
+  it("filters dense and sparse candidates by source membership and creator before ranking", async () => {
     await retrieve("pricing advice", {
       userId: "user-1",
       creatorHandle: "alex",
@@ -37,7 +37,8 @@ describe("retrieval source-library scope", () => {
 
     expect(queries).toHaveLength(2);
     for (const query of queries) {
-      expect(query.sql).not.toContain('"Nexus_user_source"');
+      expect(query.sql).toContain('"Nexus_user_source"');
+      expect(query.sql).toContain("us.user_id =");
       expect(query.sql).toContain("s.user_id =");
       expect(query.sql).toContain("s.creator_handle =");
       expect(query.params).toContain("user-1");

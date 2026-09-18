@@ -40,8 +40,8 @@ describe("channel import summary", () => {
 });
 
 describe("channel import retry transition", () => {
-  it("retries only terminal work that can make progress", () => {
-    expect(canRetryImport("queued", 1)).toBe(false);
+  it("relaunches interrupted submissions and retries terminal failures", () => {
+    expect(canRetryImport("queued", 0)).toBe(true);
     expect(canRetryImport("discovering", 1)).toBe(false);
     expect(canRetryImport("processing", 1)).toBe(false);
     expect(canRetryImport("completed", 0)).toBe(false);

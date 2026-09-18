@@ -5,16 +5,28 @@ import { db } from "~/server/db";
 
 const service = vi.hoisted(() => ({
   get: vi.fn(),
+  list: vi.fn(),
+  preview: vi.fn(),
   retry: vi.fn(),
   start: vi.fn(),
+}));
+const library = vi.hoisted(() => ({
+  list: vi.fn(),
+  remove: vi.fn(),
 }));
 
 vi.mock("~/server/imports/channel-import", () => ({
   getChannelImport: service.get,
+  listChannelImports: service.list,
+  previewChannelImport: service.preview,
   retryFailedChannelImport: service.retry,
   startChannelImport: service.start,
   ImportNotFoundError: class ImportNotFoundError extends Error {},
   ImportNotRetryableError: class ImportNotRetryableError extends Error {},
+}));
+vi.mock("~/server/domain/source-library", () => ({
+  listOwnedSources: library.list,
+  removeOwnedSource: library.remove,
 }));
 
 import { importsRouter } from "~/server/api/routers/imports";
@@ -29,6 +41,54 @@ const caller = (userId: string | null) =>
 
 describe("imports router ownership boundary", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("previews a trimmed scope before starting work", async () => {
+    service.preview.mockResolvedValue({
+      channelId: "UC123",
+      creatorHandle: "creator",
+      displayName: "Creator",
+      importLimit: 50,
+    });
+
+    await expect(caller("user-a").preview({ scope: " @creator " })).resolves.toMatchObject({
+      channelId: "UC123",
+    });
+    expect(service.preview).toHaveBeenCalledWith("@creator");
+  });
+
+  it("loads only the authenticated user's jobs and sources", async () => {
+    service.list.mockResolvedValue([]);
+    library.list.mockResolvedValue([]);
+
+    await expect(caller("user-a").list()).resolves.toEqual([]);
+    await expect(caller("user-a").sources()).resolves.toEqual([]);
+    expect(service.list).toHaveBeenCalledWith("user-a");
+    expect(library.list).toHaveBeenCalledWith("user-a");
+  });
+
+  it("removes a source only through the authenticated owner", async () => {
+    library.remove.mockResolvedValue(true);
+
+    await expect(
+      caller("user-a").removeSource({
+        sourceId: "00000000-0000-4000-8000-000000000031",
+      }),
+    ).resolves.toEqual({ removed: true });
+    expect(library.remove).toHaveBeenCalledWith(
+      "user-a",
+      "00000000-0000-4000-8000-000000000031",
+    );
+  });
+
+  it("does not expose whether another user's source exists", async () => {
+    library.remove.mockResolvedValue(false);
+
+    await expect(
+      caller("user-b").removeSource({
+        sourceId: "00000000-0000-4000-8000-000000000031",
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
 
   it("takes ownership from the authenticated context", async () => {
     service.start.mockResolvedValue({ jobId });
