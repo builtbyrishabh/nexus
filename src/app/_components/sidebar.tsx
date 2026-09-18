@@ -4,8 +4,6 @@ import { UserButton } from "@clerk/nextjs";
 import {
   Library,
   MessageSquare,
-  PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   Sparkles,
 } from "lucide-react";
@@ -27,6 +25,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarTrigger,
   useSidebar,
 } from "~/components/ui/sidebar";
 import { api } from "~/trpc/react";
@@ -35,7 +34,7 @@ import { api } from "~/trpc/react";
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { setOpenMobile, state, toggleSidebar } = useSidebar();
+  const { setOpenMobile, state } = useSidebar();
   const [activeId, setActiveId] = useQueryState("id");
   const threads = api.chats.list.useQuery();
 
@@ -56,17 +55,26 @@ export function Sidebar() {
   return (
     <SidebarRoot collapsible="icon">
       <SidebarHeader>
+        <div className="flex items-center gap-1 group-data-[collapsible=icon]:justify-center">
+          <SidebarMenu className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild size="lg" tooltip="Nexus">
+                <Link href="/chats" onClick={() => setOpenMobile(false)}>
+                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
+                    <Sparkles className="size-4" />
+                  </span>
+                  <span className="text-base font-semibold">Nexus</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          <SidebarTrigger
+            aria-label={state === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
+            title={state === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
+            className="shrink-0 group-data-[collapsible=icon]:mx-auto"
+          />
+        </div>
         <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild size="lg" tooltip="Nexus">
-              <Link href="/chats" onClick={() => setOpenMobile(false)}>
-                <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
-                  <Sparkles className="size-4" />
-                </span>
-                <span className="text-base font-semibold">Nexus</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton onClick={newChat} tooltip="New chat">
               <Plus />
@@ -143,17 +151,6 @@ export function Sidebar() {
                 <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
                 <span>Account</span>
               </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem className="hidden md:block">
-            <SidebarMenuButton
-              onClick={toggleSidebar}
-              tooltip={state === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
-            >
-              {state === "expanded" ? <PanelLeftClose /> : <PanelLeftOpen />}
-              <span>
-                {state === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
-              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

@@ -3,6 +3,7 @@
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
   CirclePlay,
   ExternalLink,
   Library,
@@ -44,6 +45,7 @@ export function SourcesPage() {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(true);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const activeJobIds = useRef(new Set<string>());
 
@@ -202,94 +204,107 @@ export function SourcesPage() {
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
           <section>
-            <div className="mb-3 flex items-center justify-between">
+            <button
+              type="button"
+              aria-expanded={libraryOpen}
+              aria-controls="source-library"
+              onClick={() => setLibraryOpen((open) => !open)}
+              className="mb-3 flex w-full items-center gap-2 rounded-lg text-left"
+            >
               <h2 className="text-lg font-semibold">Your library</h2>
               {sources.data && (
-                <span className="text-sm text-muted-foreground">
+                <span className="ml-auto text-sm text-muted-foreground">
                   {sources.data.length} {sources.data.length === 1 ? "video" : "videos"}
                 </span>
               )}
-            </div>
-
-            {removeSource.error && (
-              <p className="mb-3 text-sm text-destructive">
-                {removeSource.error.message}
-              </p>
-            )}
-
-            {sources.isLoading ? (
-              <div className="h-36 animate-pulse rounded-2xl bg-muted" />
-            ) : sources.error ? (
-              <QueryError
-                message="Nexus could not load your source library."
-                onRetry={() => void sources.refetch()}
+              <ChevronDown
+                className={`size-4 shrink-0 text-muted-foreground transition-transform ${libraryOpen ? "rotate-180" : ""}`}
               />
-            ) : sources.data?.length ? (
-              <div className="overflow-hidden rounded-2xl border bg-card">
-                {sources.data.map((source, index) => (
-                  <div
-                    key={source.id}
-                    className={`flex items-center gap-3 p-4 ${index ? "border-t" : ""}`}
-                  >
-                    <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-red-500/10 text-red-600 dark:text-red-400">
-                      <CirclePlay className="size-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{source.title}</p>
-                      <p className="mt-1 truncate text-xs text-muted-foreground">
-                        {source.author ?? source.creatorHandle ?? "YouTube"}
-                      </p>
-                    </div>
-                    <Button asChild variant="ghost" size="icon-sm">
-                      <a
-                        href={source.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={`Open ${source.title}`}
+            </button>
+
+            {libraryOpen && (
+              <div id="source-library">
+                {removeSource.error && (
+                  <p className="mb-3 text-sm text-destructive">
+                    {removeSource.error.message}
+                  </p>
+                )}
+
+                {sources.isLoading ? (
+                  <div className="h-36 animate-pulse rounded-2xl bg-muted" />
+                ) : sources.error ? (
+                  <QueryError
+                    message="Nexus could not load your source library."
+                    onRetry={() => void sources.refetch()}
+                  />
+                ) : sources.data?.length ? (
+                  <div className="overflow-hidden rounded-2xl border bg-card">
+                    {sources.data.map((source, index) => (
+                      <div
+                        key={source.id}
+                        className={`flex items-center gap-3 p-4 ${index ? "border-t" : ""}`}
                       >
-                        <ExternalLink />
-                      </a>
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`Remove ${source.title}`}
-                        >
-                          <Trash2 />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Remove this source?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Nexus will stop using “{source.title}” in future answers.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Keep source</AlertDialogCancel>
-                          <AlertDialogAction
-                            variant="destructive"
-                            onClick={() =>
-                              removeSource.mutate({ sourceId: source.id })
-                            }
+                        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-red-500/10 text-red-600 dark:text-red-400">
+                          <CirclePlay className="size-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{source.title}</p>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">
+                            {source.author ?? source.creatorHandle ?? "YouTube"}
+                          </p>
+                        </div>
+                        <Button asChild variant="ghost" size="icon-sm">
+                          <a
+                            href={source.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={`Open ${source.title}`}
                           >
-                            Remove source
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                            <ExternalLink />
+                          </a>
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`Remove ${source.title}`}
+                            >
+                              <Trash2 />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Remove this source?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Nexus will stop using “{source.title}” in future answers.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Keep source</AlertDialogCancel>
+                              <AlertDialogAction
+                                variant="destructive"
+                                onClick={() =>
+                                  removeSource.mutate({ sourceId: source.id })
+                                }
+                              >
+                                Remove source
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed p-8 text-center">
-                <Library className="mx-auto size-8 text-muted-foreground" />
-                <p className="mt-3 font-medium">Add your first source</p>
-                <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-                  Import a creator above, then ask questions across their latest videos.
-                </p>
+                ) : (
+                  <div className="rounded-2xl border border-dashed p-8 text-center">
+                    <Library className="mx-auto size-8 text-muted-foreground" />
+                    <p className="mt-3 font-medium">Add your first source</p>
+                    <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+                      Import a creator above, then ask questions across their latest videos.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </section>

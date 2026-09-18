@@ -20,7 +20,7 @@ export default async function AppLayout({
     <SidebarProvider defaultOpen={defaultSidebarOpen}>
       <Sidebar />
       <SidebarInset className="h-dvh min-w-0 overflow-hidden">
-        <header className="flex h-12 shrink-0 items-center border-b px-3 md:px-4">
+        <header className="flex h-12 shrink-0 items-center border-b px-3 md:hidden">
           <SidebarTrigger aria-label="Toggle navigation" />
         </header>
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
