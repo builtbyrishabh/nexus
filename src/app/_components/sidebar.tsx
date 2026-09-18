@@ -1,6 +1,7 @@
 "use client";
 
 import { UserButton } from "@clerk/nextjs";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryState } from "nuqs";
@@ -34,8 +35,18 @@ export function Sidebar() {
   return (
     <aside className="flex h-dvh w-64 shrink-0 flex-col border-r border-line bg-surface">
       <div className="flex items-center justify-between px-4 py-4">
-        <Link href="/chats" className="text-lg font-semibold text-ink">
-          Nexus
+        <Link
+          href="/chats"
+          className="flex items-center gap-2 text-lg font-semibold text-ink"
+        >
+          <Image
+            src="/nexus-logo.svg"
+            alt=""
+            width={28}
+            height={28}
+            priority
+          />
+          <span>Nexus</span>
         </Link>
       </div>
 

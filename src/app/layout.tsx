@@ -8,10 +8,20 @@ import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { TRPCReactProvider } from "~/trpc/react";
 
 export const metadata: Metadata = {
-  title: "Nexus — ask a creator's catalog",
+  title: {
+    default: "Nexus — ask a creator's catalog",
+    template: "%s · Nexus",
+  },
   description:
     "Grounded, cited answers from a YouTube creator's own videos — every claim deep-links to the second it was said.",
-  icons: [{ rel: "icon", url: "/favicon.ico" }],
+  applicationName: "Nexus",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "64x64" },
+      { url: "/nexus-logo.svg", type: "image/svg+xml" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 const geist = Geist({
