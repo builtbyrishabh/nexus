@@ -109,8 +109,6 @@ const mocks = vi.hoisted(() => ({
   env: { TRANSCRIBE_FALLBACK: false, ASSEMBLYAI_API_KEY: "test-key" },
   fetchTranscript: vi.fn(),
   getBasicInfo: vi.fn(),
-  getChannel: vi.fn(),
-  resolveURL: vi.fn(),
   download: vi.fn(),
   transcribe: vi.fn(),
 }));
@@ -122,13 +120,7 @@ vi.mock("youtube-transcript", async (importOriginal) => {
 });
 vi.mock("youtubei.js", () => ({
   Log: { setLevel: () => undefined, Level: { NONE: 0 } },
-  Innertube: {
-    create: async () => ({
-      getBasicInfo: mocks.getBasicInfo,
-      getChannel: mocks.getChannel,
-      resolveURL: mocks.resolveURL,
-    }),
-  },
+  Innertube: { create: async () => ({ getBasicInfo: mocks.getBasicInfo }) },
 }));
 vi.mock("ai", () => ({ transcribe: mocks.transcribe }));
 

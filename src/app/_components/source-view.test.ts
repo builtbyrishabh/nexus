@@ -15,9 +15,6 @@ function job(
     scope: "UC123",
     creatorHandle: "creator",
     status,
-    error: null,
-    createdAt: new Date("2026-09-17T10:00:00Z"),
-    updatedAt: new Date("2026-09-17T10:01:00Z"),
     summary,
   };
 }

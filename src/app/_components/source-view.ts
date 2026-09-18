@@ -3,7 +3,7 @@ import type { RouterOutputs } from "~/trpc/react";
 export type ImportOverview =
   RouterOutputs["sources"]["overview"]["imports"][number];
 
-export const activeImportStatuses = [
+const activeImportStatuses = [
   "queued",
   "discovering",
   "processing",

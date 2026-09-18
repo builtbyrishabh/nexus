@@ -16,8 +16,9 @@ import {
   youtubeLoader,
 } from "~/server/ingest/youtube-loader";
 
-type ImportWorkItem = { id: string; externalId: string };
 const DISCOVERY_LIMIT = 50;
+
+type ImportWorkItem = { id: string; externalId: string };
 
 type ImportItemSteps = {
   process(item: ImportWorkItem): Promise<void>;
@@ -96,10 +97,7 @@ async function prepareImport(jobId: string): Promise<ImportWorkItem[]> {
     .set({ status: "discovering", startedAt: job.startedAt ?? new Date() })
     .where(eq(channelImport.id, jobId));
 
-  const discovered = await discoverYoutubeChannel(
-    job.scope,
-    DISCOVERY_LIMIT,
-  );
+  const discovered = await discoverYoutubeChannel(job.scope, DISCOVERY_LIMIT);
   if (discovered.refs.length === 0) {
     throw new FatalError("The channel has no discoverable videos");
   }

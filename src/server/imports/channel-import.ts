@@ -109,9 +109,6 @@ export async function listChannelImports(userId: string) {
     scope: job.scope,
     creatorHandle: job.creatorHandle,
     status: job.status,
-    error: job.error,
-    createdAt: job.createdAt,
-    updatedAt: job.updatedAt,
     summary: summarizeImport(itemsByJob.get(job.id) ?? []),
   }));
 }
