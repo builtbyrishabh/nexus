@@ -10,8 +10,10 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryState } from "nuqs";
+import { useRef, useState } from "react";
 
 import { ChatItem } from "~/app/_components/chat-item";
+import { removeChat, renameChat } from "~/app/_components/chat-list";
 import { ThemeToggle } from "~/app/_components/theme-toggle";
 import {
   Sidebar as SidebarRoot,
@@ -34,20 +36,68 @@ import { api } from "~/trpc/react";
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const utils = api.useUtils();
   const { setOpenMobile, state } = useSidebar();
   const [activeId, setActiveId] = useQueryState("id");
+  const [chatActionError, setChatActionError] = useState<string | null>(null);
+  const deletedActiveChat = useRef<string | null>(null);
   const threads = api.chats.list.useQuery();
+
+  const rename = api.chats.rename.useMutation({
+    onMutate: async ({ threadId, title }) => {
+      setChatActionError(null);
+      await utils.chats.list.cancel();
+      const previous = utils.chats.list.getData();
+      utils.chats.list.setData(undefined, (current) =>
+        current ? renameChat(current, threadId, title) : current,
+      );
+      return { previous };
+    },
+    onError: (error, _variables, context) => {
+      utils.chats.list.setData(undefined, context?.previous);
+      setChatActionError(error.message || "Couldn't rename chat");
+    },
+    onSettled: () => void utils.chats.list.invalidate(),
+  });
+
+  const remove = api.chats.delete.useMutation({
+    onMutate: async ({ threadId }) => {
+      setChatActionError(null);
+      await utils.chats.list.cancel();
+      const previous = utils.chats.list.getData();
+      utils.chats.list.setData(undefined, (current) =>
+        current ? removeChat(current, threadId) : current,
+      );
+      return { previous };
+    },
+    onError: (error, { threadId }, context) => {
+      utils.chats.list.setData(undefined, context?.previous);
+      setChatActionError(error.message || "Couldn't delete chat");
+      if (deletedActiveChat.current === threadId) {
+        deletedActiveChat.current = null;
+        void setActiveId(threadId);
+      }
+    },
+    onSuccess: (_data, { threadId }) => {
+      if (deletedActiveChat.current === threadId) {
+        deletedActiveChat.current = null;
+      }
+    },
+    onSettled: () => void utils.chats.list.invalidate(),
+  });
 
   const onChats = pathname === "/chats";
 
   function newChat() {
     setOpenMobile(false);
+    deletedActiveChat.current = null;
     if (onChats) void setActiveId(null);
     else router.push("/chats");
   }
 
   function selectThread(id: string) {
     setOpenMobile(false);
+    deletedActiveChat.current = null;
     if (onChats) void setActiveId(id);
     else router.push(`/chats?id=${id}`);
   }
@@ -125,9 +175,16 @@ export function Sidebar() {
                     thread={thread}
                     isActive={onChats && activeId === thread.id}
                     onSelect={selectThread}
-                    onDeleted={(id) => {
-                      if (activeId === id) void setActiveId(null);
+                    onDelete={(id) => {
+                      if (onChats && activeId === id) {
+                        deletedActiveChat.current = id;
+                        void setActiveId(null);
+                      }
+                      remove.mutate({ threadId: id });
                     }}
+                    onRename={(id, title) =>
+                      rename.mutate({ threadId: id, title })
+                    }
                   />
                 ))}
               </div>
@@ -136,6 +193,14 @@ export function Sidebar() {
                 No chats yet.
               </p>
             )}
+            {chatActionError ? (
+              <p
+                role="alert"
+                className="px-2 pt-2 text-xs text-destructive"
+              >
+                {chatActionError}
+              </p>
+            ) : null}
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

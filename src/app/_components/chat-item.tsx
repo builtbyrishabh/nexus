@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import { api, type RouterOutputs } from "~/trpc/react";
+import { type RouterOutputs } from "~/trpc/react";
 
 type Thread = RouterOutputs["chats"]["list"][number];
 
@@ -15,25 +15,19 @@ export function ChatItem({
   thread,
   isActive,
   onSelect,
-  onDeleted,
+  onDelete,
+  onRename,
 }: {
   thread: Thread;
   isActive: boolean;
   onSelect: (id: string) => void;
-  onDeleted: (id: string) => void;
+  onDelete: (id: string) => void;
+  onRename: (id: string, title: string) => void;
 }) {
-  const utils = api.useUtils();
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(thread.title);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const rename = api.chats.rename.useMutation({
-    onSuccess: () => utils.chats.list.invalidate(),
-  });
-  const remove = api.chats.delete.useMutation({
-    onSuccess: () => utils.chats.list.invalidate(),
-  });
 
   useEffect(() => {
     if (renaming) inputRef.current?.select();
@@ -43,7 +37,7 @@ export function ChatItem({
     const title = draft.trim();
     setRenaming(false);
     if (title && title !== thread.title) {
-      rename.mutate({ threadId: thread.id, title });
+      onRename(thread.id, title);
     } else {
       setDraft(thread.title);
     }
@@ -118,6 +112,7 @@ export function ChatItem({
               type="button"
               onClick={() => {
                 setMenuOpen(false);
+                setDraft(thread.title);
                 setRenaming(true);
               }}
               className="block w-full px-3 py-1.5 text-left hover:bg-muted"
@@ -128,8 +123,7 @@ export function ChatItem({
               type="button"
               onClick={() => {
                 setMenuOpen(false);
-                remove.mutate({ threadId: thread.id });
-                onDeleted(thread.id);
+                onDelete(thread.id);
               }}
               className="block w-full px-3 py-1.5 text-left text-destructive hover:bg-muted"
             >
