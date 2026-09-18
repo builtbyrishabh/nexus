@@ -39,6 +39,7 @@ export const source = createTable(
   "source",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id"), // null until an existing source is assigned to a user
     kind: sourceKind("kind").notNull().default("youtube_video"),
     externalId: text("external_id").notNull(), // videoId; unique per kind
     title: text("title").notNull(),
@@ -58,6 +59,7 @@ export const source = createTable(
     ),
   },
   (t) => [
+    index("source_user_idx").on(t.userId),
     uniqueIndex("source_kind_external_idx").on(t.kind, t.externalId),
     // Retrieval filters by creator scope; index the scope column.
     index("source_creator_idx").on(t.creatorHandle),

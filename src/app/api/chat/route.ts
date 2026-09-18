@@ -1,10 +1,15 @@
 import { auth } from "@clerk/nextjs/server";
 import { handleChatStream } from "@mastra/ai-sdk";
+import { RequestContext } from "@mastra/core/request-context";
 import { TRPCError } from "@trpc/server";
 import { createUIMessageStreamResponse } from "ai";
 
 import { parseChatRequest } from "~/app/api/chat/request";
 import { assertThreadOwner } from "~/server/chat/threads";
+import {
+  loadSourceLibrary,
+  type NexusRequestContext,
+} from "~/server/domain/source-library";
 import { mastra, NEXUS_MAX_STEPS } from "~/server/mastra";
 
 export const runtime = "nodejs";
@@ -28,6 +33,12 @@ export async function POST(req: Request) {
     throw error;
   }
 
+  const library = await loadSourceLibrary(userId);
+  const requestContext = new RequestContext<NexusRequestContext>();
+  requestContext.set("userId", userId);
+  requestContext.set("hasSources", library.hasSources);
+  requestContext.set("allowedCreators", library.allowedCreators);
+
   const stream = await handleChatStream({
     mastra,
     agentId: "nexus",
@@ -35,6 +46,7 @@ export async function POST(req: Request) {
     params: {
       messages: [message],
       memory: { thread: threadId, resource: userId },
+      requestContext,
       maxSteps: NEXUS_MAX_STEPS,
       abortSignal: req.signal,
     },

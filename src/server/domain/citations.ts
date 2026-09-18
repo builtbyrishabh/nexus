@@ -20,6 +20,7 @@ export const catalogEvidenceSchema = z.object({
 
 export const catalogSearchResultSchema = z.object({
   evidence: z.array(catalogEvidenceSchema),
+  message: z.string().optional(),
 });
 
 export type CatalogEvidence = z.infer<typeof catalogEvidenceSchema>;

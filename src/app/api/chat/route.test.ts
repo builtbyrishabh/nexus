@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { RequestContext } from "@mastra/core/request-context";
 import { TRPCError } from "@trpc/server";
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   assertThreadOwner: vi.fn(),
+  loadSourceLibrary: vi.fn(),
   handleChatStream: vi.fn(),
   createUIMessageStream: vi.fn(() => ({ legacy: true })),
   createUIMessageStreamResponse: vi.fn(() => new Response("stream")),
@@ -28,6 +30,9 @@ vi.mock("~/server/mastra", () => ({
 vi.mock("~/server/chat/threads", () => ({
   assertThreadOwner: mocks.assertThreadOwner,
 }));
+vi.mock("~/server/domain/source-library", () => ({
+  loadSourceLibrary: mocks.loadSourceLibrary,
+}));
 
 const { POST } = await import("~/app/api/chat/route");
 
@@ -51,6 +56,12 @@ describe("POST /api/chat", () => {
     vi.clearAllMocks();
     mocks.auth.mockResolvedValue({ userId: "user-1" });
     mocks.assertThreadOwner.mockResolvedValue(null);
+    mocks.loadSourceLibrary.mockResolvedValue({
+      hasSources: true,
+      allowedCreators: [
+        { handle: "alex", displayName: "Alex Hormozi" },
+      ],
+    });
     mocks.handleChatStream.mockResolvedValue(mocks.stream);
   });
 
@@ -60,6 +71,7 @@ describe("POST /api/chat", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.assertThreadOwner).toHaveBeenCalledWith(threadId, "user-1");
+    expect(mocks.loadSourceLibrary).toHaveBeenCalledWith("user-1");
     expect(mocks.handleChatStream).toHaveBeenCalledWith({
       mastra: mocks.mastra,
       agentId: "nexus",
@@ -67,10 +79,18 @@ describe("POST /api/chat", () => {
       params: {
         messages: [message],
         memory: { thread: threadId, resource: "user-1" },
+        requestContext: expect.any(RequestContext),
         maxSteps: 30,
         abortSignal: req.signal,
       },
     });
+    const call = mocks.handleChatStream.mock.calls[0]![0];
+    const requestContext = call.params.requestContext as RequestContext;
+    expect(requestContext.getRaw("userId")).toBe("user-1");
+    expect(requestContext.getRaw("hasSources")).toBe(true);
+    expect(requestContext.getRaw("allowedCreators")).toEqual([
+      { handle: "alex", displayName: "Alex Hormozi" },
+    ]);
     expect(mocks.createUIMessageStreamResponse).toHaveBeenCalledWith({
       stream: mocks.stream,
     });
@@ -83,6 +103,7 @@ describe("POST /api/chat", () => {
 
     expect(response.status).toBe(401);
     expect(mocks.assertThreadOwner).not.toHaveBeenCalled();
+    expect(mocks.loadSourceLibrary).not.toHaveBeenCalled();
     expect(mocks.handleChatStream).not.toHaveBeenCalled();
   });
 
@@ -94,6 +115,7 @@ describe("POST /api/chat", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(404);
+    expect(mocks.loadSourceLibrary).not.toHaveBeenCalled();
     expect(mocks.handleChatStream).not.toHaveBeenCalled();
   });
 });
