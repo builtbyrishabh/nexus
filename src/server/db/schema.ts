@@ -6,7 +6,6 @@ import {
   jsonb,
   pgEnum,
   pgTableCreator,
-  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -53,6 +52,7 @@ export const source = createTable(
   "source",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id"), // null until an existing source is assigned to a user
     kind: sourceKind("kind").notNull().default("youtube_video"),
     externalId: text("external_id").notNull(), // videoId; unique per kind
     title: text("title").notNull(),
@@ -72,25 +72,11 @@ export const source = createTable(
     ),
   },
   (t) => [
+    index("source_user_idx").on(t.userId),
     uniqueIndex("source_kind_external_idx").on(t.kind, t.externalId),
     // Retrieval filters by creator scope; index the scope column.
     index("source_creator_idx").on(t.creatorHandle),
   ],
-);
-
-/** Which canonical sources an authenticated Clerk user may search. */
-export const userSource = createTable(
-  "user_source",
-  {
-    userId: text("user_id").notNull(),
-    sourceId: uuid("source_id")
-      .notNull()
-      .references(() => source.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (t) => [primaryKey({ columns: [t.userId, t.sourceId] })],
 );
 
 /** One authenticated request to import the latest uploads from a YouTube channel. */
@@ -190,8 +176,6 @@ export const chunk = createTable(
 
 export type Source = typeof source.$inferSelect;
 export type NewSource = typeof source.$inferInsert;
-export type UserSource = typeof userSource.$inferSelect;
-export type NewUserSource = typeof userSource.$inferInsert;
 export type ChannelImport = typeof channelImport.$inferSelect;
 export type NewChannelImport = typeof channelImport.$inferInsert;
 export type ChannelImportItem = typeof channelImportItem.$inferSelect;
