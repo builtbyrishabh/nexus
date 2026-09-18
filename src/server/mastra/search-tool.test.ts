@@ -94,7 +94,7 @@ describe("searchCreatorCatalog", () => {
     });
   });
 
-  it("narrows an allowed creator without broadening the user membership", async () => {
+  it("narrows an allowed creator without broadening source ownership", async () => {
     mocks.retrieve.mockResolvedValue([]);
     const execute = searchCreatorCatalog.execute;
     if (!execute) throw new Error("search tool has no executor");

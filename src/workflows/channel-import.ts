@@ -6,7 +6,6 @@ import {
   channelImport,
   channelImportItem,
   source,
-  userSource,
 } from "~/server/db/schema";
 import { importErrorMessage } from "~/server/domain/channel-import";
 import type { SourceRef } from "~/server/domain/types";
@@ -164,17 +163,13 @@ async function processImportVideo(item: ImportWorkItem): Promise<void> {
     });
 
     await db.transaction(async (tx) => {
-      if (job.creatorHandle) {
-        await tx
-          .update(source)
-          .set({ creatorHandle: job.creatorHandle })
-          .where(eq(source.id, outcome.sourceId));
-      }
-
       await tx
-        .insert(userSource)
-        .values({ userId: job.userId, sourceId: outcome.sourceId })
-        .onConflictDoNothing();
+        .update(source)
+        .set({
+          userId: job.userId,
+          ...(job.creatorHandle ? { creatorHandle: job.creatorHandle } : {}),
+        })
+        .where(eq(source.id, outcome.sourceId));
 
       await tx
         .update(channelImportItem)
