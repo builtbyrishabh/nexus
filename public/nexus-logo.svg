@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Nexus</title>
+  <defs>
+    <linearGradient id="nexus-gradient" x1="72" y1="72" x2="440" y2="440" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6366F1" />
+      <stop offset="1" stop-color="#8B5CF6" />
+    </linearGradient>
+  </defs>
+  <path
+    d="M126 412V100M126 412L386 100M386 100V412"
+    fill="none"
+    stroke="url(#nexus-gradient)"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="64"
+  />
+  <g fill="url(#nexus-gradient)">
+    <circle cx="126" cy="100" r="48" />
+    <circle cx="126" cy="412" r="48" />
+    <circle cx="386" cy="100" r="48" />
+    <circle cx="386" cy="412" r="48" />
+  </g>
+</svg>
