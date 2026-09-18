@@ -11,9 +11,13 @@ import {
   importErrorMessage,
   summarizeImport,
 } from "~/server/domain/channel-import";
-import { resolveYoutubeChannel } from "~/server/ingest/youtube-loader";
 import { runChannelImport } from "~/workflows/channel-import";
 
+const activeJobStatuses: Array<"queued" | "discovering" | "processing"> = [
+  "queued",
+  "discovering",
+  "processing",
+];
 const terminalJobStatuses: Array<"completed" | "failed"> = [
   "completed",
   "failed",
@@ -24,14 +28,9 @@ export class ImportNotFoundError extends Error {}
 
 /** Persist and enqueue a durable import; the workflow continues after this call returns. */
 export async function startChannelImport(userId: string, scope: string) {
-  const resolved = await resolveYoutubeChannel(scope);
   const [job] = await db
     .insert(channelImport)
-    .values({
-      userId,
-      scope: resolved.channelId,
-      creatorHandle: resolved.creatorHandle,
-    })
+    .values({ userId, scope: scope.trim() })
     .returning({ id: channelImport.id });
   if (!job) throw new Error("Failed to create the channel import");
 
@@ -56,14 +55,41 @@ export async function startChannelImport(userId: string, scope: string) {
   return { jobId: job.id };
 }
 
-/** Recent owned imports for the Sources overview; item counts remain derived. */
+export function combineImportHistory<T extends { createdAt: Date }>(
+  active: readonly T[],
+  recentTerminal: readonly T[],
+): T[] {
+  return [...active, ...recentTerminal].sort(
+    (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
+  );
+}
+
+/** All active imports plus recent terminal history; item counts remain derived. */
 export async function listChannelImports(userId: string) {
-  const jobs = await db
-    .select()
-    .from(channelImport)
-    .where(eq(channelImport.userId, userId))
-    .orderBy(desc(channelImport.createdAt))
-    .limit(20);
+  const [active, recentTerminal] = await Promise.all([
+    db
+      .select()
+      .from(channelImport)
+      .where(
+        and(
+          eq(channelImport.userId, userId),
+          inArray(channelImport.status, activeJobStatuses),
+        ),
+      )
+      .orderBy(desc(channelImport.createdAt)),
+    db
+      .select()
+      .from(channelImport)
+      .where(
+        and(
+          eq(channelImport.userId, userId),
+          inArray(channelImport.status, terminalJobStatuses),
+        ),
+      )
+      .orderBy(desc(channelImport.createdAt))
+      .limit(20),
+  ]);
+  const jobs = combineImportHistory(active, recentTerminal);
 
   if (jobs.length === 0) return [];
 

@@ -3,8 +3,6 @@ import type {
   ChannelImportItem,
 } from "~/server/db/schema";
 
-export const CHANNEL_IMPORT_LIMIT = 50;
-
 export type ImportJobStatus = ChannelImport["status"];
 export type ImportItemStatus = ChannelImportItem["status"];
 

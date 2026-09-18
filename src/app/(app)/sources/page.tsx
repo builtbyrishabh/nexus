@@ -5,12 +5,9 @@ import { useState } from "react";
 import { importStatusLabel, isActiveImport } from "~/app/_components/source-view";
 import { api, type RouterOutputs } from "~/trpc/react";
 
-type Preview = RouterOutputs["sources"]["preview"];
-
 export default function SourcesPage() {
   const utils = api.useUtils();
   const [scope, setScope] = useState("");
-  const [preview, setPreview] = useState<Preview | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
   const overview = api.sources.overview.useQuery(undefined, {
@@ -30,13 +27,9 @@ export default function SourcesPage() {
     },
   );
 
-  const previewMutation = api.sources.preview.useMutation({
-    onSuccess: setPreview,
-  });
   const startMutation = api.imports.start.useMutation({
     async onSuccess(result) {
       setSelectedJobId(result.jobId);
-      setPreview(null);
       setScope("");
       await utils.sources.overview.invalidate();
     },
@@ -51,24 +44,9 @@ export default function SourcesPage() {
       ]);
     },
   });
-  const removeMutation = api.sources.removeCreator.useMutation({
-    onSuccess: () => utils.sources.overview.invalidate(),
-  });
-
-  function submitPreview(event: React.FormEvent<HTMLFormElement>) {
+  function submitImport(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setPreview(null);
-    previewMutation.mutate({ scope });
-  }
-
-  function removeCreator(handle: string, displayName: string) {
-    if (
-      window.confirm(
-        `Remove ${displayName} and all of their videos from your searchable library?`,
-      )
-    ) {
-      removeMutation.mutate({ creatorHandle: handle });
-    }
+    startMutation.mutate({ scope });
   }
 
   return (
@@ -85,11 +63,12 @@ export default function SourcesPage() {
         <section className="rounded-2xl border border-line bg-surface p-4 sm:p-6">
           <h2 className="font-semibold text-ink">Add a source</h2>
           <p className="mt-1 text-sm text-muted">
-            Paste a video URL, channel URL, @handle, or channel ID.
+            Paste a video URL, channel URL, @handle, or channel ID to import
+            the latest 50 uploads.
           </p>
           <form
             className="mt-4 flex flex-col gap-3 sm:flex-row"
-            onSubmit={submitPreview}
+            onSubmit={submitImport}
           >
             <input
               value={scope}
@@ -100,48 +79,12 @@ export default function SourcesPage() {
             />
             <button
               type="submit"
-              disabled={!scope.trim() || previewMutation.isPending}
+              disabled={!scope.trim() || startMutation.isPending}
               className="rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {previewMutation.isPending ? "Resolving…" : "Preview"}
+              {startMutation.isPending ? "Starting…" : "Import latest 50"}
             </button>
           </form>
-
-          {previewMutation.error ? (
-            <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">
-              {previewMutation.error.message}
-            </p>
-          ) : null}
-
-          {preview ? (
-            <div className="mt-4 flex flex-col gap-4 rounded-xl border border-accent bg-elevated p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-medium text-ink">{preview.displayName}</p>
-                <p className="mt-1 text-sm text-muted">
-                  @{preview.creatorHandle} · latest {preview.importLimit} uploads
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPreview(null)}
-                  className="rounded-lg border border-line px-3 py-2 text-sm text-muted hover:text-ink"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={startMutation.isPending}
-                  onClick={() =>
-                    startMutation.mutate({ scope: preview.channelId })
-                  }
-                  className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                >
-                  {startMutation.isPending ? "Starting…" : "Import videos"}
-                </button>
-              </div>
-            </div>
-          ) : null}
 
           {startMutation.error ? (
             <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">
@@ -159,6 +102,8 @@ export default function SourcesPage() {
           </div>
           {overview.isLoading ? (
             <LoadingCards />
+          ) : overview.error ? (
+            <EmptyState text="We could not load recent imports." />
           ) : overview.data?.imports.length ? (
             <div className="space-y-3">
               {overview.data.imports.map((entry) => {
@@ -192,7 +137,9 @@ export default function SourcesPage() {
                       <ImportDetails
                         job={job.data}
                         loading={job.isLoading}
+                        error={job.error?.message}
                         retrying={retryMutation.isPending}
+                        retryError={retryMutation.error?.message}
                         onRetry={() => retryMutation.mutate({ jobId: entry.id })}
                       />
                     ) : null}
@@ -201,7 +148,7 @@ export default function SourcesPage() {
               })}
             </div>
           ) : (
-            <EmptyState text="No imports yet. Preview a creator above to begin." />
+            <EmptyState text="No imports yet. Add a creator above to begin." />
           )}
         </section>
 
@@ -218,23 +165,13 @@ export default function SourcesPage() {
                   key={creator.handle ?? "other-sources"}
                   className="rounded-xl border border-line bg-elevated p-4"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-medium text-ink">{creator.displayName}</h3>
-                      <p className="mt-1 text-sm text-muted">
-                        {creator.handle ? `@${creator.handle} · ` : ""}
-                        {creator.videos.length} indexed video
-                        {creator.videos.length === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                    {creator.handle ? (
-                      <RemoveCreatorButton
-                        handle={creator.handle}
-                        displayName={creator.displayName}
-                        disabled={removeMutation.isPending}
-                        onRemove={removeCreator}
-                      />
-                    ) : null}
+                  <div>
+                    <h3 className="font-medium text-ink">{creator.displayName}</h3>
+                    <p className="mt-1 text-sm text-muted">
+                      {creator.handle ? `@${creator.handle} · ` : ""}
+                      {creator.videos.length} indexed video
+                      {creator.videos.length === 1 ? "" : "s"}
+                    </p>
                   </div>
                   <ul className="mt-3 divide-y divide-line">
                     {creator.videos.map((video) => (
@@ -256,37 +193,9 @@ export default function SourcesPage() {
           ) : (
             <EmptyState text="Your library is empty. Imported videos will appear here as soon as they are ready." />
           )}
-          {removeMutation.error ? (
-            <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">
-              {removeMutation.error.message}
-            </p>
-          ) : null}
         </section>
       </div>
     </div>
-  );
-}
-
-function RemoveCreatorButton({
-  handle,
-  displayName,
-  disabled,
-  onRemove,
-}: {
-  handle: string;
-  displayName: string;
-  disabled: boolean;
-  onRemove: (handle: string, displayName: string) => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => onRemove(handle, displayName)}
-      className="rounded-lg px-2 py-1 text-xs text-red-600 transition hover:bg-red-500/10 disabled:opacity-50 dark:text-red-400"
-    >
-      Remove
-    </button>
   );
 }
 
@@ -303,15 +212,26 @@ type ImportDetailsData = RouterOutputs["imports"]["byId"];
 function ImportDetails({
   job,
   loading,
+  error,
   retrying,
+  retryError,
   onRetry,
 }: {
   job: ImportDetailsData | undefined;
   loading: boolean;
+  error?: string;
   retrying: boolean;
+  retryError?: string;
   onRetry: () => void;
 }) {
   if (loading) return <p className="mt-4 text-sm text-muted">Loading videos…</p>;
+  if (error) {
+    return (
+      <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">
+        {error}
+      </p>
+    );
+  }
   if (!job) return null;
 
   const failures = job.items.filter((item) => item.status === "failed");
@@ -320,6 +240,11 @@ function ImportDetails({
     (job.status === "failed" || failures.length > 0);
   return (
     <div className="mt-4 border-t border-line pt-4">
+      {retryError ? (
+        <p role="alert" className="mb-3 text-sm text-red-600 dark:text-red-400">
+          {retryError}
+        </p>
+      ) : null}
       {job.error ? (
         <p className="mb-3 text-sm text-red-600 dark:text-red-400">{job.error}</p>
       ) : null}

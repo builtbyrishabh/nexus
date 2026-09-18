@@ -8,10 +8,7 @@ import {
   source,
   userSource,
 } from "~/server/db/schema";
-import {
-  CHANNEL_IMPORT_LIMIT,
-  importErrorMessage,
-} from "~/server/domain/channel-import";
+import { importErrorMessage } from "~/server/domain/channel-import";
 import type { SourceRef } from "~/server/domain/types";
 import { IN_FLIGHT } from "~/server/ingest/channel";
 import { ingestSource } from "~/server/ingest/pipeline";
@@ -21,6 +18,7 @@ import {
 } from "~/server/ingest/youtube-loader";
 
 type ImportWorkItem = { id: string; externalId: string };
+const DISCOVERY_LIMIT = 50;
 
 type ImportItemSteps = {
   process(item: ImportWorkItem): Promise<void>;
@@ -101,7 +99,7 @@ async function prepareImport(jobId: string): Promise<ImportWorkItem[]> {
 
   const discovered = await discoverYoutubeChannel(
     job.scope,
-    CHANNEL_IMPORT_LIMIT,
+    DISCOVERY_LIMIT,
   );
   if (discovered.refs.length === 0) {
     throw new FatalError("The channel has no discoverable videos");

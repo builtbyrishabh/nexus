@@ -4,9 +4,6 @@ vi.mock("~/server/db", () => ({ db: {} }));
 vi.mock("~/server/imports/channel-import", () => ({
   listChannelImports: vi.fn(),
 }));
-vi.mock("~/server/ingest/youtube-loader", () => ({
-  resolveYoutubeChannel: vi.fn(),
-}));
 
 const { groupLibrarySources } = await import(
   "~/server/sources/source-management"
