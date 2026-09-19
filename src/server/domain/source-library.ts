@@ -20,8 +20,12 @@ export const nexusRequestContextSchema = z.object({
 export type NexusRequestContext = z.infer<typeof nexusRequestContextSchema>;
 
 /** Give one user access to a canonical source without duplicating its content. */
-export async function attachSourceToUser(userId: string, sourceId: string) {
-  await db
+export async function attachSourceToUser(
+  userId: string,
+  sourceId: string,
+  executor: Pick<typeof db, "insert"> = db,
+) {
+  await executor
     .insert(userSource)
     .values({ userId, sourceId })
     .onConflictDoNothing();
@@ -53,17 +57,23 @@ export async function removeOwnedSource(
   userId: string,
   sourceId: string,
 ): Promise<boolean> {
-  const removedMemberships = await db
-    .delete(userSource)
-    .where(
-      and(eq(userSource.sourceId, sourceId), eq(userSource.userId, userId)),
-    )
-    .returning({ sourceId: userSource.sourceId });
-  const removedLegacyOwnership = await db
-    .update(source)
-    .set({ userId: null })
-    .where(and(eq(source.id, sourceId), eq(source.userId, userId)))
-    .returning({ sourceId: source.id });
+  const { removedMemberships, removedLegacyOwnership } = await db.transaction(
+    async (tx) => {
+      const removedMemberships = await tx
+        .delete(userSource)
+        .where(
+          and(eq(userSource.sourceId, sourceId), eq(userSource.userId, userId)),
+        )
+        .returning({ sourceId: userSource.sourceId });
+      const removedLegacyOwnership = await tx
+        .update(source)
+        .set({ userId: null })
+        .where(and(eq(source.id, sourceId), eq(source.userId, userId)))
+        .returning({ sourceId: source.id });
+
+      return { removedMemberships, removedLegacyOwnership };
+    },
+  );
 
   return removedMemberships.length > 0 || removedLegacyOwnership.length > 0;
 }

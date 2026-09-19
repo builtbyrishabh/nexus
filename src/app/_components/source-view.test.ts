@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  firstCreatorName,
   importStatusLabel,
   isActiveImport,
   type ImportOverview,
@@ -50,5 +51,16 @@ describe("source import view states", () => {
         job("completed", { ...partialSummary, failed: 0, queued: 0 }),
       ),
     ).toBe("Completed");
+  });
+
+  it("uses the first source with a usable creator name", () => {
+    expect(
+      firstCreatorName([
+        { author: null, creatorHandle: null },
+        { author: "", creatorHandle: "creator-handle" },
+        { author: "Later creator", creatorHandle: "later" },
+      ]),
+    ).toBe("creator-handle");
+    expect(firstCreatorName([])).toBeUndefined();
   });
 });

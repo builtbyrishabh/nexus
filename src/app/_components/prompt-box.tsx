@@ -21,7 +21,6 @@ export function PromptBox({
   defaultValue,
   placeholder = "Ask a question…",
   autoFocus,
-  compact: _compact,
 }: {
   onSubmit: (text: string) => void;
   onStop?: () => void;
@@ -29,7 +28,6 @@ export function PromptBox({
   defaultValue?: string;
   placeholder?: string;
   autoFocus?: boolean;
-  compact?: boolean;
 }) {
   const [text, setText] = useState(defaultValue ?? "");
   const busy = status === "submitted" || status === "streaming";

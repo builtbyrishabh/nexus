@@ -29,6 +29,7 @@ const terminalJobStatuses: Array<"completed" | "failed"> = [
   "completed",
   "failed",
 ];
+const terminalHistoryLimit = 20;
 
 export class ImportNotRetryableError extends Error {}
 export class ImportNotFoundError extends Error {}
@@ -48,7 +49,7 @@ export function combineImportHistory<T extends { createdAt: Date }>(
   active: readonly T[],
   recentTerminal: readonly T[],
 ): T[] {
-  return [...active, ...recentTerminal].sort(
+  return [...active, ...recentTerminal.slice(0, terminalHistoryLimit)].sort(
     (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
   );
 }
@@ -69,7 +70,7 @@ export async function listChannelImports(userId: string) {
         inArray(channelImport.status, terminalJobStatuses),
       ),
       orderBy: [desc(channelImport.createdAt)],
-      limit: 20,
+      limit: terminalHistoryLimit,
     }),
   ]);
   const jobs = combineImportHistory(active, recentTerminal);

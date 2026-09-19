@@ -170,7 +170,18 @@ export function Sidebar() {
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel>Recent chats</SidebarGroupLabel>
           <SidebarGroupContent>
-            {threads.isLoading ? (
+            {threads.isError ? (
+              <div role="alert" className="px-2 py-2 text-sm text-destructive">
+                <p>Couldn&apos;t load chats.</p>
+                <button
+                  type="button"
+                  onClick={() => void threads.refetch()}
+                  className="mt-1 font-medium text-foreground hover:underline"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : threads.isLoading ? (
               <p className="px-2 py-2 text-sm text-muted-foreground">Loading…</p>
             ) : threads.data && threads.data.length > 0 ? (
               <div className="flex flex-col gap-0.5">

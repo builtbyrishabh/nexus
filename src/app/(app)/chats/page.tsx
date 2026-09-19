@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { ChatConversation } from "~/app/_components/chat-conversation";
 import { PromptBox } from "~/app/_components/prompt-box";
+import { firstCreatorName } from "~/app/_components/source-view";
 import { api } from "~/trpc/react";
 
 const newThreadId = () => crypto.randomUUID();
@@ -56,7 +57,7 @@ function ChatsHarness() {
   }
 
   if (!activeId) {
-    const firstCreator = sourcesQuery.data?.[0]?.author;
+    const firstCreator = firstCreatorName(sourcesQuery.data ?? []);
     const suggestions = firstCreator
       ? [
           `What are ${firstCreator}'s most important ideas?`,

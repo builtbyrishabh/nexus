@@ -46,8 +46,18 @@ vi.mock("~/server/ingest/youtube-loader", () => ({
   discoverYoutubeChannel: mocks.discover,
 }));
 
-const { launchChannelImport, listChannelImports, previewChannelImport } =
-  await import("~/server/imports/channel-import");
+const {
+  combineImportHistory,
+  launchChannelImport,
+  listChannelImports,
+  previewChannelImport,
+} = await import("~/server/imports/channel-import");
+
+const historyJobs = (count: number, start = 0) =>
+  Array.from({ length: count }, (_, index) => ({
+    id: `job-${start + index}`,
+    createdAt: new Date(Date.UTC(2026, 8, 18, 0, 0, count - index)),
+  }));
 
 describe("channel import launch", () => {
   beforeEach(() => {
@@ -116,6 +126,27 @@ describe("channel import launch", () => {
         },
       },
     ]);
+  });
+
+  it("returns an empty import history without querying item summaries", () => {
+    expect(combineImportHistory([], [])).toEqual([]);
+  });
+
+  it("keeps exactly 20 terminal imports", () => {
+    expect(combineImportHistory([], historyJobs(20))).toHaveLength(20);
+  });
+
+  it("caps terminal imports at 20 and merges active jobs newest-first", () => {
+    const terminal = historyJobs(21);
+    const active = [
+      { id: "active", createdAt: new Date("2026-09-18T00:01:00Z") },
+    ];
+
+    const history = combineImportHistory(active, terminal);
+
+    expect(history).toHaveLength(21);
+    expect(history[0]?.id).toBe("active");
+    expect(history.some((job) => job.id === "job-20")).toBe(false);
   });
 
   it("does not mark an accepted workflow failed when saving its diagnostic run ID fails", async () => {

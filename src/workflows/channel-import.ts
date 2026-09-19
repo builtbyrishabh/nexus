@@ -169,23 +169,25 @@ async function processImportVideo(item: ImportWorkItem): Promise<void> {
       ...(job.creatorHandle ? { creatorHandle: job.creatorHandle } : {}),
     });
 
-    await attachSourceToUser(job.userId, outcome.sourceId);
-    if (job.creatorHandle) {
-      await db
-        .update(source)
-        .set({ creatorHandle: job.creatorHandle })
-        .where(eq(source.id, outcome.sourceId));
-    }
-    await db
-      .update(channelImportItem)
-      .set({
-        status: outcome.status,
-        sourceId: outcome.sourceId,
-        title: outcome.title,
-        skipReason: outcome.status === "skipped" ? outcome.reason : null,
-        error: null,
-      })
-      .where(eq(channelImportItem.id, item.id));
+    await db.transaction(async (tx) => {
+      await attachSourceToUser(job.userId, outcome.sourceId, tx);
+      if (job.creatorHandle) {
+        await tx
+          .update(source)
+          .set({ creatorHandle: job.creatorHandle })
+          .where(eq(source.id, outcome.sourceId));
+      }
+      await tx
+        .update(channelImportItem)
+        .set({
+          status: outcome.status,
+          sourceId: outcome.sourceId,
+          title: outcome.title,
+          skipReason: outcome.status === "skipped" ? outcome.reason : null,
+          error: null,
+        })
+        .where(eq(channelImportItem.id, item.id));
+    });
   } catch (error) {
     await db
       .update(channelImportItem)

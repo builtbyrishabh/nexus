@@ -28,15 +28,13 @@ import {
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Progress } from "~/components/ui/progress";
+import {
+  importStatusLabel,
+  isActiveImport,
+} from "~/app/_components/source-view";
 import { api, type RouterOutputs } from "~/trpc/react";
 
 type ImportPreview = RouterOutputs["imports"]["preview"];
-
-const activeStatuses = new Set(["queued", "discovering", "processing"]);
-
-function statusLabel(status: string) {
-  return status.charAt(0).toUpperCase() + status.slice(1).replaceAll("_", " ");
-}
 
 /** User-owned source library plus the durable YouTube import workflow. */
 export function SourcesPage() {
@@ -52,7 +50,7 @@ export function SourcesPage() {
   const sources = api.imports.sources.useQuery();
   const jobs = api.imports.list.useQuery(undefined, {
     refetchInterval: (query) =>
-      query.state.data?.some((job) => activeStatuses.has(job.status))
+      query.state.data?.some((job) => isActiveImport(job.status))
         ? 2_500
         : false,
   });
@@ -61,7 +59,7 @@ export function SourcesPage() {
     {
       enabled: Boolean(selectedJobId),
       refetchInterval: (query) =>
-        query.state.data && activeStatuses.has(query.state.data.status)
+        query.state.data && isActiveImport(query.state.data.status)
           ? 2_500
           : false,
     },
@@ -91,7 +89,7 @@ export function SourcesPage() {
     if (!jobs.data) return;
     const nextActiveIds = new Set(
       jobs.data
-        .filter((job) => activeStatuses.has(job.status))
+        .filter((job) => isActiveImport(job.status))
         .map((job) => job.id),
     );
     const importFinished = [...activeJobIds.current].some(
@@ -328,7 +326,7 @@ export function SourcesPage() {
                     : job.status === "queued"
                       ? 4
                       : 12;
-                  const active = activeStatuses.has(job.status);
+                  const active = isActiveImport(job.status);
 
                   return (
                     <button
@@ -349,7 +347,7 @@ export function SourcesPage() {
                           ) : (
                             <AlertCircle className="size-3 text-destructive" />
                           )}
-                          {statusLabel(job.status)}
+                          {importStatusLabel(job)}
                         </span>
                       </div>
                       <Progress value={progress} className="mt-3" />
@@ -369,6 +367,10 @@ export function SourcesPage() {
           </section>
         </div>
 
+        {selectedJobId && selectedJob.isPending && (
+          <div className="mt-8 h-36 animate-pulse rounded-2xl bg-muted" />
+        )}
+
         {selectedJobId && selectedJob.data && (
           <section className="mt-8 rounded-2xl border bg-card p-5 md:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -380,7 +382,8 @@ export function SourcesPage() {
                   {selectedJob.data.scope}
                 </h2>
               </div>
-              {(selectedJob.data.status === "failed" ||
+              {(selectedJob.data.status === "queued" ||
+                selectedJob.data.status === "failed" ||
                 (selectedJob.data.status === "completed" &&
                   selectedJob.data.summary.failed > 0)) && (
                 <Button
@@ -389,7 +392,9 @@ export function SourcesPage() {
                   disabled={retryImport.isPending}
                 >
                   <RefreshCw className={retryImport.isPending ? "animate-spin" : ""} />
-                  Retry failed videos
+                  {selectedJob.data.status === "queued"
+                    ? "Relaunch queued job"
+                    : "Retry failed videos"}
                 </Button>
               )}
             </div>

@@ -117,8 +117,10 @@ export function groupCitedSources(
 /** Compact, cited-only source list shown below one completed answer. */
 export function SourcesFooter({
   sources,
+  onSourceClick,
 }: {
   sources: CatalogEvidence[];
+  onSourceClick: (citation: CatalogEvidence) => void;
 }) {
   if (sources.length === 0) return null;
   const groups = groupCitedSources(sources);
@@ -138,36 +140,31 @@ export function SourcesFooter({
             key={group.key}
             className="grid grid-cols-1 items-center gap-2 rounded-lg px-2 py-2 hover:bg-muted sm:grid-cols-[minmax(0,1fr)_auto]"
           >
-            <a
-              href={group.citations[0]!.url}
-              target="_blank"
-              rel="noreferrer"
-              className="group/source min-w-0 text-left no-underline"
+            <button
+              type="button"
+              onClick={() => onSourceClick(group.citations[0]!)}
+              className="group/source min-w-0 border-0 bg-transparent p-0 text-left"
             >
               <span className="flex items-center gap-1 text-xs font-medium text-foreground group-hover/source:underline">
                 <span className="truncate">{group.title}</span>
-                <span aria-hidden="true" className="shrink-0 text-muted-foreground">
-                  ↗
-                </span>
               </span>
               {group.author && (
                 <span className="mt-0.5 block text-xs text-muted-foreground">
                   {group.author} · YouTube
                 </span>
               )}
-            </a>
+            </button>
             <span className="flex flex-wrap gap-1 sm:justify-end">
               {group.citations.map((citation) => (
-                <a
+                <button
                   key={citation.citationId}
-                  href={citation.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-md bg-primary/10 px-1.5 py-1 text-xs font-semibold text-primary no-underline hover:bg-primary/15"
-                  aria-label={`Watch ${group.title} at ${citation.timestamp ?? "source"} on YouTube`}
+                  type="button"
+                  onClick={() => onSourceClick(citation)}
+                  className="rounded-md border-0 bg-primary/10 px-1.5 py-1 text-xs font-semibold text-primary hover:bg-primary/15"
+                  aria-label={`Open ${group.title} at ${citation.timestamp ?? "source"}`}
                 >
                   {citation.timestamp ?? "Source"}
-                </a>
+                </button>
               ))}
             </span>
           </div>
@@ -312,7 +309,7 @@ export function CitedAnswer({
         onCitationClick={setSelectedSource}
       />
       {showSources && (
-        <SourcesFooter sources={sources} />
+        <SourcesFooter sources={sources} onSourceClick={setSelectedSource} />
       )}
       {selectedSource && (
         <SourceDetail

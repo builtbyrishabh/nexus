@@ -9,6 +9,21 @@ const activeImportStatuses = [
   "processing",
 ] as const;
 
+type SourceIdentity = {
+  author: string | null;
+  creatorHandle: string | null;
+};
+
+/** Find the first source that can name a creator in chat suggestions. */
+export function firstCreatorName(
+  sources: readonly SourceIdentity[],
+): string | undefined {
+  for (const source of sources) {
+    const name = source.author?.trim() || source.creatorHandle?.trim();
+    if (name) return name;
+  }
+}
+
 export function isActiveImport(status: ImportOverview["status"]): boolean {
   return activeImportStatuses.includes(
     status as (typeof activeImportStatuses)[number],

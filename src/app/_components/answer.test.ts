@@ -205,7 +205,12 @@ describe("groupCitedSources", () => {
 describe("SourcesFooter", () => {
   it("renders no empty sources section", () => {
     expect(
-      renderToStaticMarkup(createElement(SourcesFooter, { sources: [] })),
+      renderToStaticMarkup(
+        createElement(SourcesFooter, {
+          sources: [],
+          onSourceClick: () => undefined,
+        }),
+      ),
     ).toBe("");
   });
 
@@ -218,7 +223,10 @@ describe("SourcesFooter", () => {
       timestamp: "2:24",
     };
     const html = renderToStaticMarkup(
-      createElement(SourcesFooter, { sources: [citation, later] }),
+      createElement(SourcesFooter, {
+        sources: [citation, later],
+        onSourceClick: () => undefined,
+      }),
     );
 
     expect(html).toContain("1 video");
@@ -226,9 +234,9 @@ describe("SourcesFooter", () => {
     expect(html).toContain("1:05");
     expect(html).toContain("2:24");
     expect(html).toContain("flex-wrap");
-    expect(html).toContain('href="https://youtu.be/abc?t=65"');
-    expect(html).toContain('href="https://youtu.be/abc?t=144"');
-    expect(html).toContain('target="_blank"');
+    expect(html).toContain('aria-label="Open Example video at 1:05"');
+    expect(html).toContain('aria-label="Open Example video at 2:24"');
+    expect(html).not.toContain('href="https://youtu.be/abc?t=65"');
   });
 });
 

@@ -30,4 +30,14 @@ describe("optimistic chat list updates", () => {
     ]);
     expect(chats[1]?.title).toBe("Second");
   });
+
+  it("leaves the cached list unchanged when the chat is unknown", () => {
+    expect(removeChat(chats, "chat-9")).toEqual(chats);
+    expect(renameChat(chats, "chat-9", "Updated title")).toEqual(chats);
+  });
+
+  it("handles an empty cached list", () => {
+    expect(removeChat([], "chat-1")).toEqual([]);
+    expect(renameChat([], "chat-1", "Updated title")).toEqual([]);
+  });
 });

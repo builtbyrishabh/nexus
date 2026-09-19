@@ -38,6 +38,7 @@ export function ChatConversation({
 }) {
   const utils = api.useUtils();
   const hadHistoryRef = useRef(initialMessages.length > 0);
+  const copyTimerRef = useRef<number | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const {
@@ -80,14 +81,30 @@ export function ChatConversation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId]);
 
+  useEffect(
+    () => () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    },
+    [],
+  );
+
   const waiting =
     status === "submitted" && messages.at(-1)?.role === "user";
   const citations = useMemo(() => citationRegistry(messages), [messages]);
 
   async function copyAnswer(message: UIMessage) {
-    await navigator.clipboard.writeText(copyableAnswerText(textOf(message)));
+    try {
+      await navigator.clipboard.writeText(copyableAnswerText(textOf(message)));
+    } catch {
+      return;
+    }
     setCopiedId(message.id);
-    window.setTimeout(() => setCopiedId(null), 1_500);
+    if (copyTimerRef.current !== null) {
+      window.clearTimeout(copyTimerRef.current);
+    }
+    copyTimerRef.current = window.setTimeout(() => setCopiedId(null), 1_500);
   }
 
   function retryLastResponse() {
@@ -182,7 +199,6 @@ export function ChatConversation({
       <div className="shrink-0 bg-background/95 px-4 pb-4 pt-2 backdrop-blur md:px-6">
         <div className="mx-auto w-full max-w-[52rem]">
           <PromptBox
-            compact
             status={status}
             onStop={stop}
             onSubmit={(text) => void sendMessage({ text })}
