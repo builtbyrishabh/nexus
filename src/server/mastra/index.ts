@@ -65,7 +65,7 @@ const model = gateway(env.GEN_MODEL);
 export const nexusMemory = new Memory({
   storage,
   options: {
-    lastMessages: Number.MAX_SAFE_INTEGER,
+    lastMessages: 20,
     generateTitle: {
       model,
       instructions: "Write a short, specific title for this conversation.",

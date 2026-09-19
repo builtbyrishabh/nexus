@@ -1,11 +1,13 @@
 import { sql } from "drizzle-orm";
 import {
   customType,
+  date,
   index,
   integer,
   jsonb,
   pgEnum,
   pgTableCreator,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -31,6 +33,19 @@ export const sourceKind = pgEnum("nexus_source_kind", [
   "book",
 ]);
 
+export const channelImportStatus = pgEnum("nexus_channel_import_status", [
+  "queued",
+  "discovering",
+  "processing",
+  "completed",
+  "failed",
+]);
+
+export const channelImportItemStatus = pgEnum(
+  "nexus_channel_import_item_status",
+  ["queued", "processing", "ingested", "skipped", "failed"],
+);
+
 /**
  * `source` — one ingested thing (a YouTube video now, a book later). Provenance/catalog:
  * what a citation points back to, and the idempotency anchor for re-ingestion.
@@ -39,7 +54,9 @@ export const source = createTable(
   "source",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id"), // null until an existing source is assigned to a user
+    // Read-only compatibility for catalogs created before user_source was restored.
+    // New ownership writes go exclusively to userSource.
+    userId: text("user_id"),
     kind: sourceKind("kind").notNull().default("youtube_video"),
     externalId: text("external_id").notNull(), // videoId; unique per kind
     title: text("title").notNull(),
@@ -64,6 +81,90 @@ export const source = createTable(
     // Retrieval filters by creator scope; index the scope column.
     index("source_creator_idx").on(t.creatorHandle),
   ],
+);
+
+/** Which canonical sources an authenticated Clerk user may search. */
+export const userSource = createTable(
+  "user_source",
+  {
+    userId: text("user_id").notNull(),
+    sourceId: uuid("source_id")
+      .notNull()
+      .references(() => source.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.sourceId] })],
+);
+
+/** One authenticated request to import the latest uploads from a YouTube channel. */
+export const channelImport = createTable(
+  "channel_import",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id").notNull(),
+    scope: text("scope").notNull(),
+    status: channelImportStatus("status").notNull().default("queued"),
+    creatorHandle: text("creator_handle"),
+    workflowRunId: text("workflow_run_id"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (t) => [index("channel_import_user_created_idx").on(t.userId, t.createdAt)],
+);
+
+/** The exact discovered videos and their independently retryable outcomes. */
+export const channelImportItem = createTable(
+  "channel_import_item",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => channelImport.id, { onDelete: "cascade" }),
+    externalId: text("external_id").notNull(),
+    position: integer("position").notNull(),
+    status: channelImportItemStatus("status").notNull().default("queued"),
+    attempts: integer("attempts").notNull().default(0),
+    sourceId: uuid("source_id").references(() => source.id, {
+      onDelete: "set null",
+    }),
+    title: text("title"),
+    skipReason: text("skip_reason"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("channel_import_item_job_video_idx").on(t.jobId, t.externalId),
+    uniqueIndex("channel_import_item_job_position_idx").on(t.jobId, t.position),
+    index("channel_import_item_job_status_idx").on(t.jobId, t.status),
+  ],
+);
+
+/** Atomic per-user counters that bound paid work on public deployments. */
+export const dailyUsage = createTable(
+  "daily_usage",
+  {
+    userId: text("user_id").notNull(),
+    day: date("day").notNull(),
+    action: text("action").notNull(),
+    count: integer("count").notNull().default(1),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.day, t.action] })],
 );
 
 /**
@@ -106,5 +207,11 @@ export const chunk = createTable(
 
 export type Source = typeof source.$inferSelect;
 export type NewSource = typeof source.$inferInsert;
+export type UserSource = typeof userSource.$inferSelect;
+export type NewUserSource = typeof userSource.$inferInsert;
+export type ChannelImport = typeof channelImport.$inferSelect;
+export type NewChannelImport = typeof channelImport.$inferInsert;
+export type ChannelImportItem = typeof channelImportItem.$inferSelect;
+export type NewChannelImportItem = typeof channelImportItem.$inferInsert;
 export type Chunk = typeof chunk.$inferSelect;
 export type NewChunk = typeof chunk.$inferInsert;

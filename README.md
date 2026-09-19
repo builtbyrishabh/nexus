@@ -21,7 +21,7 @@
   </p>
 </div>
 
-![Nexus answering a creator-catalog question with timestamped citations](docs/assets/nexus-product.png)
+![Nexus answering a creator-catalog question with timestamped citations](docs/assets/issue-39/chat-citations-desktop.png)
 
 ## Why Nexus
 
@@ -73,12 +73,12 @@ the agent calls one search tool whose output drives both the answer and the cita
 git clone https://github.com/builtbyrishabh/nexus.git
 cd nexus
 pnpm install
-cp .env.example .env
+cp .env.example .env.local
 ```
 
 ### 2. Configure
 
-At minimum, add a Postgres connection, Clerk keys, and an AI Gateway key to `.env`. The database
+At minimum, add a Postgres connection, Clerk keys, and an AI Gateway key to `.env.local`. The database
 must support the `vector` extension.
 
 ```bash
@@ -92,13 +92,18 @@ pnpm db:push
 pnpm dev
 ```
 
-Open [localhost:3000](http://localhost:3000), sign in, and ask a question about an ingested catalog.
+Open [localhost:3000](http://localhost:3000), sign in, open **Sources**, and import a YouTube
+channel. Sources imported in the app are attached to the signed-in user's private library. Once the
+import completes, open **Chats** and ask a question.
 
-To ingest from the CLI:
+For development or catalog maintenance, the CLI can ingest canonical source data directly:
 
 ```bash
 pnpm ingest --channel @creator
 ```
+
+CLI ingestion does not attach sources to a Clerk user, so those sources do not appear in a user's
+library unless ownership is assigned separately. Use the Sources page for the normal product flow.
 
 AssemblyAI transcription is an opt-in fallback for videos without captions. Set
 `TRANSCRIBE_FALLBACK=true` only when you intend to use it.
@@ -114,8 +119,23 @@ pnpm build
 `pnpm eval` runs the production agent against grounded-answer cases and scores faithfulness, answer
 relevancy, and context precision.
 
+## Pre-launch limits
+
+- Chat requests are limited to 8,000 text characters and the latest 20 messages are sent to the model.
+- Each user may send 100 chat messages and start 3 imports or retries per UTC day. These per-user limits do not
+  replace provider budgets or an edge-level global rate limit.
+- Imports embed and contextualize transcript chunks, so they can incur AI provider charges even when
+  paid transcription fallback is disabled.
+- Before deploying, run `pnpm db:setup && pnpm db:push` against the production database, configure
+  Clerk and provider credentials, set provider spending limits, and smoke-test one signed-in import
+  and cited chat response.
+
 ## Architecture
 
 The key design rule is simple: use native library behavior for chat and own custom code only where
 the product needs differentiated retrieval or verifiable citations. The full request path, data
 contracts, retrieval pipeline, and tradeoffs live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## License
+
+[MIT](LICENSE) © 2026 Rishabh Singh

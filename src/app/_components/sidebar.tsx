@@ -1,94 +1,242 @@
 "use client";
 
 import { UserButton } from "@clerk/nextjs";
+import {
+  Library,
+  MessageSquare,
+  Plus,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryState } from "nuqs";
+import { useRef, useState } from "react";
 
 import { ChatItem } from "~/app/_components/chat-item";
+import { removeChat, renameChat } from "~/app/_components/chat-list";
+import { ThemeToggle } from "~/app/_components/theme-toggle";
+import {
+  Sidebar as SidebarRoot,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  SidebarTrigger,
+  useSidebar,
+} from "~/components/ui/sidebar";
 import { api } from "~/trpc/react";
 
-/**
- * The app-shell sidebar: new chat, the thread list, and the Clerk user button. It shares the `?id=`
- * query param with the chats page (same nuqs adapter), so selecting a thread on `/chats` is a shallow
- * flip — no route change, no remount.
- */
+/** Responsive app navigation with persistent desktop collapse and a mobile drawer. */
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const utils = api.useUtils();
+  const { setOpenMobile, state } = useSidebar();
   const [activeId, setActiveId] = useQueryState("id");
+  const [chatActionError, setChatActionError] = useState<string | null>(null);
+  const deletedActiveChat = useRef<string | null>(null);
   const threads = api.chats.list.useQuery();
+
+  const rename = api.chats.rename.useMutation({
+    onMutate: async ({ threadId, title }) => {
+      setChatActionError(null);
+      await utils.chats.list.cancel();
+      const previous = utils.chats.list.getData();
+      utils.chats.list.setData(undefined, (current) =>
+        current ? renameChat(current, threadId, title) : current,
+      );
+      return { previous };
+    },
+    onError: (error, _variables, context) => {
+      utils.chats.list.setData(undefined, context?.previous);
+      setChatActionError(error.message || "Couldn't rename chat");
+    },
+    onSettled: () => void utils.chats.list.invalidate(),
+  });
+
+  const remove = api.chats.delete.useMutation({
+    onMutate: async ({ threadId }) => {
+      setChatActionError(null);
+      await utils.chats.list.cancel();
+      const previous = utils.chats.list.getData();
+      utils.chats.list.setData(undefined, (current) =>
+        current ? removeChat(current, threadId) : current,
+      );
+      return { previous };
+    },
+    onError: (error, { threadId }, context) => {
+      utils.chats.list.setData(undefined, context?.previous);
+      setChatActionError(error.message || "Couldn't delete chat");
+      if (deletedActiveChat.current === threadId) {
+        deletedActiveChat.current = null;
+        void setActiveId(threadId);
+      }
+    },
+    onSuccess: (_data, { threadId }) => {
+      if (deletedActiveChat.current === threadId) {
+        deletedActiveChat.current = null;
+      }
+    },
+    onSettled: () => void utils.chats.list.invalidate(),
+  });
 
   const onChats = pathname === "/chats";
 
   function newChat() {
+    setOpenMobile(false);
+    deletedActiveChat.current = null;
     if (onChats) void setActiveId(null);
     else router.push("/chats");
   }
 
   function selectThread(id: string) {
+    setOpenMobile(false);
+    deletedActiveChat.current = null;
     if (onChats) void setActiveId(id);
     else router.push(`/chats?id=${id}`);
   }
 
   return (
-    <aside className="flex h-dvh w-64 shrink-0 flex-col border-r border-line bg-surface">
-      <div className="flex items-center justify-between px-4 py-4">
-        <Link
-          href="/chats"
-          className="flex items-center gap-2 text-lg font-semibold text-ink"
-        >
-          <Image
-            src="/nexus-logo.svg"
-            alt=""
-            width={28}
-            height={28}
-            priority
+    <SidebarRoot collapsible="icon">
+      <SidebarHeader>
+        <div className="flex items-center gap-1 group-data-[collapsible=icon]:justify-center">
+          <SidebarMenu className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild size="lg" tooltip="Nexus">
+                <Link href="/chats" onClick={() => setOpenMobile(false)}>
+                  <Image
+                    src="/nexus-logo.svg"
+                    alt=""
+                    width={32}
+                    height={32}
+                    priority
+                    className="size-8 shrink-0"
+                  />
+                  <span className="text-base font-semibold">Nexus</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          <SidebarTrigger
+            aria-label={state === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
+            title={state === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
+            className="shrink-0 group-data-[collapsible=icon]:mx-auto"
           />
-          <span>Nexus</span>
-        </Link>
-      </div>
+        </div>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={newChat} tooltip="New chat">
+              <Plus />
+              <span>New chat</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
 
-      <div className="px-3">
-        <button
-          type="button"
-          onClick={newChat}
-          className="flex w-full items-center gap-2 rounded-lg border border-line bg-elevated px-3 py-2 text-sm font-medium text-ink transition hover:border-accent"
-        >
-          <span className="text-accent">＋</span> New chat
-        </button>
-      </div>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={onChats} tooltip="Chats">
+                  <Link href="/chats" onClick={() => setOpenMobile(false)}>
+                    <MessageSquare />
+                    <span>Chats</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === "/sources"}
+                  tooltip="Sources"
+                >
+                  <Link href="/sources" onClick={() => setOpenMobile(false)}>
+                    <Library />
+                    <span>Sources</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
-      <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-        <p className="px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted">
-          Chats
-        </p>
-        {threads.isLoading ? (
-          <p className="px-3 py-2 text-sm text-muted">Loading…</p>
-        ) : threads.data && threads.data.length > 0 ? (
-          <div className="flex flex-col gap-0.5">
-            {threads.data.map((thread) => (
-              <ChatItem
-                key={thread.id}
-                thread={thread}
-                isActive={onChats && activeId === thread.id}
-                onSelect={selectThread}
-                onDeleted={(id) => {
-                  if (activeId === id) void setActiveId(null);
-                }}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="px-3 py-2 text-sm text-muted">No chats yet.</p>
-        )}
-      </div>
+        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+          <SidebarGroupLabel>Recent chats</SidebarGroupLabel>
+          <SidebarGroupContent>
+            {threads.isError ? (
+              <div role="alert" className="px-2 py-2 text-sm text-destructive">
+                <p>Couldn&apos;t load chats.</p>
+                <button
+                  type="button"
+                  onClick={() => void threads.refetch()}
+                  className="mt-1 font-medium text-foreground hover:underline"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : threads.isLoading ? (
+              <p className="px-2 py-2 text-sm text-muted-foreground">Loading…</p>
+            ) : threads.data && threads.data.length > 0 ? (
+              <div className="flex flex-col gap-0.5">
+                {threads.data.map((thread) => (
+                  <ChatItem
+                    key={thread.id}
+                    thread={thread}
+                    isActive={onChats && activeId === thread.id}
+                    onSelect={selectThread}
+                    onDelete={(id) => {
+                      if (onChats && activeId === id) {
+                        deletedActiveChat.current = id;
+                        void setActiveId(null);
+                      }
+                      remove.mutate({ threadId: id });
+                    }}
+                    onRename={(id, title) =>
+                      rename.mutate({ threadId: id, title })
+                    }
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="px-2 py-2 text-sm text-muted-foreground">
+                No chats yet.
+              </p>
+            )}
+            {chatActionError ? (
+              <p
+                role="alert"
+                className="px-2 pt-2 text-xs text-destructive"
+              >
+                {chatActionError}
+              </p>
+            ) : null}
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
 
-      <div className="flex items-center gap-2 border-t border-line px-4 py-3">
-        <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
-        <span className="text-sm text-muted">Account</span>
-      </div>
-    </aside>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <ThemeToggle />
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip="Account" size="lg">
+              <div>
+                <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
+                <span>Account</span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </SidebarRoot>
   );
 }

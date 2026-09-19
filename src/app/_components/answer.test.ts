@@ -10,6 +10,7 @@ import {
   SourcesFooter,
   citationRegistry,
   citedSources,
+  copyableAnswerText,
   groupCitedSources,
 } from "~/app/_components/answer";
 
@@ -99,6 +100,18 @@ describe("citationRegistry", () => {
 });
 
 describe("AnswerText", () => {
+  it("renders assistant Markdown as structured content", () => {
+    const html = renderToStaticMarkup(
+      createElement(AnswerText, {
+        text: "## Pricing\n\n- Raise the price\n- Improve delivery",
+        citations: new Map(),
+      }),
+    );
+
+    expect(html).toContain("<h2");
+    expect(html).toContain("<li");
+  });
+
   it("renders a resolved marker as a compact numbered source control", () => {
     const citations = new Map([[citation.citationId, citation]]);
     const html = renderToStaticMarkup(
@@ -115,7 +128,7 @@ describe("AnswerText", () => {
     expect(html).not.toContain('href="https://youtu.be/abc?t=65"');
   });
 
-  it("keeps unresolved markers visible as plain text", () => {
+  it("hides unresolved internal markers from older messages", () => {
     const html = renderToStaticMarkup(
       createElement(AnswerText, {
         text: "Unsupported [cite:missing] marker.",
@@ -123,7 +136,8 @@ describe("AnswerText", () => {
       }),
     );
 
-    expect(html).toContain("[cite:missing]");
+    expect(html).toContain("Unsupported marker.");
+    expect(html).not.toContain("[cite:missing]");
     expect(html).not.toContain("<a");
   });
 });
@@ -149,6 +163,16 @@ describe("citedSources", () => {
         citations,
       ).map((source) => source.citationId),
     ).toEqual(["chunk-2", "chunk-1"]);
+  });
+});
+
+describe("copyableAnswerText", () => {
+  it("removes internal citation markers without damaging surrounding prose", () => {
+    expect(
+      copyableAnswerText(
+        "Charge more [cite:chunk-1], then improve delivery.[cite:chunk-2]\n\nKeep going.",
+      ),
+    ).toBe("Charge more, then improve delivery.\n\nKeep going.");
   });
 });
 
@@ -181,7 +205,12 @@ describe("groupCitedSources", () => {
 describe("SourcesFooter", () => {
   it("renders no empty sources section", () => {
     expect(
-      renderToStaticMarkup(createElement(SourcesFooter, { sources: [] })),
+      renderToStaticMarkup(
+        createElement(SourcesFooter, {
+          sources: [],
+          onSourceClick: () => undefined,
+        }),
+      ),
     ).toBe("");
   });
 
@@ -194,7 +223,10 @@ describe("SourcesFooter", () => {
       timestamp: "2:24",
     };
     const html = renderToStaticMarkup(
-      createElement(SourcesFooter, { sources: [citation, later] }),
+      createElement(SourcesFooter, {
+        sources: [citation, later],
+        onSourceClick: () => undefined,
+      }),
     );
 
     expect(html).toContain("1 video");
@@ -202,6 +234,9 @@ describe("SourcesFooter", () => {
     expect(html).toContain("1:05");
     expect(html).toContain("2:24");
     expect(html).toContain("flex-wrap");
+    expect(html).toContain('aria-label="Open Example video at 1:05"');
+    expect(html).toContain('aria-label="Open Example video at 2:24"');
+    expect(html).not.toContain('href="https://youtu.be/abc?t=65"');
   });
 });
 

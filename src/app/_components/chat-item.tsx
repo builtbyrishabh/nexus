@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import { api, type RouterOutputs } from "~/trpc/react";
+import { type RouterOutputs } from "~/trpc/react";
 
 type Thread = RouterOutputs["chats"]["list"][number];
 
@@ -15,25 +15,19 @@ export function ChatItem({
   thread,
   isActive,
   onSelect,
-  onDeleted,
+  onDelete,
+  onRename,
 }: {
   thread: Thread;
   isActive: boolean;
   onSelect: (id: string) => void;
-  onDeleted: (id: string) => void;
+  onDelete: (id: string) => void;
+  onRename: (id: string, title: string) => void;
 }) {
-  const utils = api.useUtils();
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(thread.title);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const rename = api.chats.rename.useMutation({
-    onSuccess: () => utils.chats.list.invalidate(),
-  });
-  const remove = api.chats.delete.useMutation({
-    onSuccess: () => utils.chats.list.invalidate(),
-  });
 
   useEffect(() => {
     if (renaming) inputRef.current?.select();
@@ -43,7 +37,7 @@ export function ChatItem({
     const title = draft.trim();
     setRenaming(false);
     if (title && title !== thread.title) {
-      rename.mutate({ threadId: thread.id, title });
+      onRename(thread.id, title);
     } else {
       setDraft(thread.title);
     }
@@ -64,7 +58,7 @@ export function ChatItem({
               setRenaming(false);
             }
           }}
-          className="w-full rounded-lg border border-accent bg-elevated px-2 py-1.5 text-sm text-ink focus:outline-none"
+          className="w-full rounded-lg border border-primary bg-background px-2 py-1.5 text-sm text-foreground focus:outline-none"
         />
       </div>
     );
@@ -73,7 +67,7 @@ export function ChatItem({
   return (
     <div
       className={`group relative flex items-center rounded-lg ${
-        isActive ? "bg-accent-soft" : "hover:bg-surface"
+        isActive ? "bg-sidebar-accent" : "hover:bg-sidebar-accent"
       }`}
     >
       <Link
@@ -83,7 +77,9 @@ export function ChatItem({
           onSelect(thread.id);
         }}
         className={`min-w-0 flex-1 truncate px-3 py-2 text-sm ${
-          isActive ? "text-ink" : "text-muted group-hover:text-ink"
+          isActive
+            ? "text-sidebar-accent-foreground"
+            : "text-sidebar-foreground/70 group-hover:text-sidebar-accent-foreground"
         }`}
         title={thread.title}
       >
@@ -94,7 +90,7 @@ export function ChatItem({
         type="button"
         aria-label="Chat options"
         onClick={() => setMenuOpen((v) => !v)}
-        className="mr-1 hidden size-7 shrink-0 place-items-center rounded-md text-muted hover:bg-line hover:text-ink group-hover:grid data-[open=true]:grid"
+        className="mr-1 hidden size-7 shrink-0 place-items-center rounded-md text-sidebar-foreground/70 hover:bg-sidebar-border hover:text-sidebar-foreground group-hover:grid data-[open=true]:grid"
         data-open={menuOpen}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -111,14 +107,15 @@ export function ChatItem({
             onClick={() => setMenuOpen(false)}
             aria-hidden
           />
-          <div className="absolute right-1 top-9 z-20 w-32 overflow-hidden rounded-lg border border-line bg-elevated py-1 text-sm shadow-lg">
+          <div className="absolute right-1 top-9 z-20 w-32 overflow-hidden rounded-lg border bg-popover py-1 text-sm text-popover-foreground shadow-lg">
             <button
               type="button"
               onClick={() => {
                 setMenuOpen(false);
+                setDraft(thread.title);
                 setRenaming(true);
               }}
-              className="block w-full px-3 py-1.5 text-left text-ink hover:bg-surface"
+              className="block w-full px-3 py-1.5 text-left hover:bg-muted"
             >
               Rename
             </button>
@@ -126,10 +123,9 @@ export function ChatItem({
               type="button"
               onClick={() => {
                 setMenuOpen(false);
-                remove.mutate({ threadId: thread.id });
-                onDeleted(thread.id);
+                onDelete(thread.id);
               }}
-              className="block w-full px-3 py-1.5 text-left text-red-500 hover:bg-surface"
+              className="block w-full px-3 py-1.5 text-left text-destructive hover:bg-muted"
             >
               Delete
             </button>

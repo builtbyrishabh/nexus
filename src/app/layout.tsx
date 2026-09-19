@@ -5,6 +5,8 @@ import { type Metadata } from "next";
 import { Geist } from "next/font/google";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 
+import { ThemeProvider } from "~/app/_components/theme-provider";
+import { TooltipProvider } from "~/components/ui/tooltip";
 import { TRPCReactProvider } from "~/trpc/react";
 
 export const metadata: Metadata = {
@@ -35,10 +37,14 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en" className={geist.variable} suppressHydrationWarning>
-        <body className="bg-canvas text-ink antialiased">
-          <TRPCReactProvider>
-            <NuqsAdapter>{children}</NuqsAdapter>
-          </TRPCReactProvider>
+        <body className="bg-background text-foreground antialiased">
+          <ThemeProvider>
+            <TooltipProvider>
+              <TRPCReactProvider>
+                <NuqsAdapter>{children}</NuqsAdapter>
+              </TRPCReactProvider>
+            </TooltipProvider>
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>
