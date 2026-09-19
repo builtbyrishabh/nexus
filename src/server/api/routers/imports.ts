@@ -6,6 +6,7 @@ import {
   listOwnedSources,
   removeOwnedSource,
 } from "~/server/domain/source-library";
+import { canRetryImport } from "~/server/domain/channel-import";
 import {
   getChannelImport,
   ImportNotFoundError,
@@ -15,6 +16,7 @@ import {
   retryFailedChannelImport,
   startChannelImport,
 } from "~/server/imports/channel-import";
+import { consumeDailyQuota } from "~/server/usage-quota";
 
 const jobIdSchema = z.string().uuid();
 
@@ -38,7 +40,12 @@ export const importsRouter = createTRPCRouter({
 
   start: protectedProcedure
     .input(z.object({ scope: z.string().trim().min(1).max(500) }))
-    .mutation(({ ctx, input }) => startChannelImport(ctx.userId, input.scope)),
+    .mutation(async ({ ctx, input }) => {
+      if (!(await consumeDailyQuota(ctx.userId, "import"))) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Daily import limit reached" });
+      }
+      return startChannelImport(ctx.userId, input.scope);
+    }),
 
   byId: protectedProcedure
     .input(z.object({ jobId: jobIdSchema }))
@@ -51,6 +58,14 @@ export const importsRouter = createTRPCRouter({
   retryFailures: protectedProcedure
     .input(z.object({ jobId: jobIdSchema }))
     .mutation(async ({ ctx, input }) => {
+      const job = await getChannelImport(ctx.userId, input.jobId);
+      if (!job) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!canRetryImport(job.status, job.summary.failed)) {
+        throw new TRPCError({ code: "CONFLICT" });
+      }
+      if (!(await consumeDailyQuota(ctx.userId, "import"))) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Daily import limit reached" });
+      }
       try {
         return await retryFailedChannelImport(ctx.userId, input.jobId);
       } catch (error) {

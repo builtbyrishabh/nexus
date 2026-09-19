@@ -5,8 +5,8 @@ import {
   Library,
   MessageSquare,
   Plus,
-  Sparkles,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryState } from "nuqs";
@@ -110,9 +110,14 @@ export function Sidebar() {
             <SidebarMenuItem>
               <SidebarMenuButton asChild size="lg" tooltip="Nexus">
                 <Link href="/chats" onClick={() => setOpenMobile(false)}>
-                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
-                    <Sparkles className="size-4" />
-                  </span>
+                  <Image
+                    src="/nexus-logo.svg"
+                    alt=""
+                    width={32}
+                    height={32}
+                    priority
+                    className="size-8 shrink-0"
+                  />
                   <span className="text-base font-semibold">Nexus</span>
                 </Link>
               </SidebarMenuButton>

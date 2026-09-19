@@ -3,6 +3,8 @@
 import { type ChatStatus } from "ai";
 import { useState } from "react";
 
+import { MAX_CHAT_TEXT_LENGTH } from "~/lib/chat-limits";
+
 import {
   PromptInput,
   PromptInputBody,
@@ -50,6 +52,7 @@ export function PromptBox({
           onChange={(event) => setText(event.currentTarget.value)}
           placeholder={placeholder}
           className="min-h-12 py-3 text-base"
+          maxLength={MAX_CHAT_TEXT_LENGTH}
         />
       </PromptInputBody>
       <PromptInputFooter className="justify-end pt-0">

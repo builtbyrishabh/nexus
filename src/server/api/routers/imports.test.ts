@@ -14,6 +14,7 @@ const library = vi.hoisted(() => ({
   list: vi.fn(),
   remove: vi.fn(),
 }));
+const quota = vi.hoisted(() => ({ consume: vi.fn() }));
 
 vi.mock("~/server/imports/channel-import", () => ({
   getChannelImport: service.get,
@@ -28,19 +29,23 @@ vi.mock("~/server/domain/source-library", () => ({
   listOwnedSources: library.list,
   removeOwnedSource: library.remove,
 }));
+vi.mock("~/server/usage-quota", () => ({ consumeDailyQuota: quota.consume }));
 
 import { importsRouter } from "~/server/api/routers/imports";
-import {
-  ImportNotFoundError,
-  ImportNotRetryableError,
-} from "~/server/imports/channel-import";
-
 const jobId = "00000000-0000-4000-8000-000000000032";
+const retryableJob = {
+  id: jobId,
+  status: "failed",
+  summary: { failed: 1 },
+};
 const caller = (userId: string | null) =>
   importsRouter.createCaller({ db, userId, headers: new Headers() });
 
 describe("imports router ownership boundary", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    quota.consume.mockResolvedValue(true);
+  });
 
   it("previews a trimmed scope before starting work", async () => {
     service.preview.mockResolvedValue({
@@ -99,6 +104,15 @@ describe("imports router ownership boundary", () => {
     expect(service.start).toHaveBeenCalledWith("user-a", "@creator");
   });
 
+  it("rejects import work after the daily quota without starting it", async () => {
+    quota.consume.mockResolvedValue(false);
+
+    await expect(caller("user-a").start({ scope: "@creator" })).rejects.toMatchObject({
+      code: "TOO_MANY_REQUESTS",
+    });
+    expect(service.start).not.toHaveBeenCalled();
+  });
+
   it("never exposes a job absent from the caller's owned lookup", async () => {
     service.get.mockResolvedValue(undefined);
 
@@ -109,6 +123,7 @@ describe("imports router ownership boundary", () => {
   });
 
   it("passes the authenticated owner to retries", async () => {
+    service.get.mockResolvedValue(retryableJob);
     service.retry.mockResolvedValue({ jobId });
 
     await expect(caller("user-a").retryFailures({ jobId })).resolves.toEqual({
@@ -117,20 +132,36 @@ describe("imports router ownership boundary", () => {
     expect(service.retry).toHaveBeenCalledWith("user-a", jobId);
   });
 
+  it("does not retry after the daily import quota is exhausted", async () => {
+    service.get.mockResolvedValue(retryableJob);
+    quota.consume.mockResolvedValue(false);
+
+    await expect(caller("user-a").retryFailures({ jobId })).rejects.toMatchObject({
+      code: "TOO_MANY_REQUESTS",
+    });
+    expect(service.retry).not.toHaveBeenCalled();
+  });
+
   it("rejects an unowned or active retry without exposing job details", async () => {
-    service.retry.mockRejectedValue(new ImportNotFoundError());
+    service.get.mockResolvedValue(undefined);
 
     await expect(caller("user-b").retryFailures({ jobId })).rejects.toMatchObject({
       code: "NOT_FOUND",
     });
+    expect(quota.consume).not.toHaveBeenCalled();
   });
 
   it("rejects retries while the owned job is active", async () => {
-    service.retry.mockRejectedValue(new ImportNotRetryableError());
+    service.get.mockResolvedValue({
+      ...retryableJob,
+      status: "processing",
+    });
 
     await expect(caller("user-a").retryFailures({ jobId })).rejects.toMatchObject({
       code: "CONFLICT",
     });
+    expect(quota.consume).not.toHaveBeenCalled();
+    expect(service.retry).not.toHaveBeenCalled();
   });
 
   it("requires authentication", async () => {

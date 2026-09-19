@@ -24,6 +24,7 @@ import {
   MessageContent,
 } from "~/components/ai-elements/message";
 import { api } from "~/trpc/react";
+import { CHAT_LENGTH_ERROR, CHAT_QUOTA_ERROR } from "~/lib/chat-limits";
 
 /** One live AI SDK conversation, keyed by its persisted Mastra thread. */
 export function ChatConversation({
@@ -66,6 +67,11 @@ export function ChatConversation({
   });
 
   const sentSeedRef = useRef(false);
+  const knownError = error
+    ? [CHAT_QUOTA_ERROR, CHAT_LENGTH_ERROR].find((message) =>
+        error.message.includes(message),
+      )
+    : undefined;
   useEffect(() => {
     if (sentSeedRef.current || !seed || initialMessages.length > 0) return;
     sentSeedRef.current = true;
@@ -156,15 +162,17 @@ export function ChatConversation({
           {error && (
             <div className="rounded-xl border border-destructive/25 bg-destructive/5 p-4 text-sm">
               <p className="font-medium text-destructive">
-                Nexus couldn&apos;t finish that response.
+                {knownError ?? "Nexus couldn't finish that response."}
               </p>
-              <button
-                type="button"
-                onClick={retryLastResponse}
-                className="mt-2 inline-flex items-center gap-1.5 font-medium text-foreground hover:underline"
-              >
-                <RotateCcw className="size-3.5" /> Retry response
-              </button>
+              {!knownError && (
+                <button
+                  type="button"
+                  onClick={retryLastResponse}
+                  className="mt-2 inline-flex items-center gap-1.5 font-medium text-foreground hover:underline"
+                >
+                  <RotateCcw className="size-3.5" /> Retry response
+                </button>
+              )}
             </div>
           )}
         </ConversationContent>

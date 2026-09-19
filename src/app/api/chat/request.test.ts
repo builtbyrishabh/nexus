@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseChatRequest } from "~/app/api/chat/request";
+import { CHAT_LENGTH_ERROR, MAX_CHAT_TEXT_LENGTH } from "~/lib/chat-limits";
 
 const threadId = "550e8400-e29b-41d4-a716-446655440000";
 const userMessage = {
@@ -62,6 +63,39 @@ describe("parseChatRequest", () => {
     });
 
     expect(result.ok).toBe(false);
+  });
+
+  it("caps the combined length of multipart text messages", async () => {
+    const result = await parseChatRequest({
+      message: {
+        ...userMessage,
+        parts: [
+          { type: "text", text: "a".repeat(MAX_CHAT_TEXT_LENGTH) },
+          { type: "text", text: "b" },
+        ],
+      },
+      threadId,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: CHAT_LENGTH_ERROR,
+    });
+  });
+
+  it("accepts multipart text at the exact length limit", async () => {
+    const result = await parseChatRequest({
+      message: {
+        ...userMessage,
+        parts: [
+          { type: "text", text: "a".repeat(MAX_CHAT_TEXT_LENGTH - 1) },
+          { type: "text", text: "b" },
+        ],
+      },
+      threadId,
+    });
+
+    expect(result.ok).toBe(true);
   });
 
   it("rejects client-authored tool parts", async () => {

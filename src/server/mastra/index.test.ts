@@ -19,7 +19,7 @@ describe("Nexus agent configuration", () => {
     const memory = await mastraModule.nexusAgent.getMemory();
     expect(memory).toBe(mastraModule.nexusMemory);
     expect(mastraModule.nexusMemory.getMergedThreadConfig().lastMessages).toBe(
-      Number.MAX_SAFE_INTEGER,
+      20,
     );
   });
 
