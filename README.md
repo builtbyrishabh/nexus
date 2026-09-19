@@ -12,6 +12,8 @@
     <a href="docs/ARCHITECTURE.md">Architecture</a>
     ·
     <a href="docs/DESIGN.md">Product design</a>
+    ·
+    <a href="CONTRIBUTING.md">Contributing</a>
   </p>
   <p>
     <img alt="Next.js" src="https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs" />
