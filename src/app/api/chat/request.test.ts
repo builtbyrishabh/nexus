@@ -83,6 +83,21 @@ describe("parseChatRequest", () => {
     });
   });
 
+  it("accepts multipart text at the exact length limit", async () => {
+    const result = await parseChatRequest({
+      message: {
+        ...userMessage,
+        parts: [
+          { type: "text", text: "a".repeat(MAX_CHAT_TEXT_LENGTH - 1) },
+          { type: "text", text: "b" },
+        ],
+      },
+      threadId,
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it("rejects client-authored tool parts", async () => {
     const result = await parseChatRequest({
       message: {
