@@ -12,7 +12,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AlertDialog,
@@ -44,6 +44,7 @@ export function SourcesPage() {
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(true);
+  const [activeCreator, setActiveCreator] = useState("all");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const activeJobIds = useRef(new Set<string>());
 
@@ -115,6 +116,32 @@ export function SourcesPage() {
       setPreviewing(false);
     }
   }
+
+  // Group the library into one tab per creator so a long list stays scoped.
+  const creators = useMemo(() => {
+    const map = new Map<string, { key: string; label: string; count: number }>();
+    for (const source of sources.data ?? []) {
+      const key = creatorKey(source);
+      const existing = map.get(key);
+      if (existing) existing.count += 1;
+      else
+        map.set(key, {
+          key,
+          label: source.author ?? source.creatorHandle ?? "YouTube",
+          count: 1,
+        });
+    }
+    return [...map.values()];
+  }, [sources.data]);
+
+  // Fall back to "all" if the active creator was just removed.
+  const shownCreator = creators.some((c) => c.key === activeCreator)
+    ? activeCreator
+    : "all";
+  const librarySources =
+    shownCreator === "all"
+      ? sources.data ?? []
+      : (sources.data ?? []).filter((s) => creatorKey(s) === shownCreator);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -236,8 +263,31 @@ export function SourcesPage() {
                     onRetry={() => void sources.refetch()}
                   />
                 ) : sources.data?.length ? (
-                  <div className="overflow-hidden rounded-2xl border bg-card">
-                    {sources.data.map((source, index) => (
+                  <>
+                    {creators.length > 1 && (
+                      <div className="mb-3 flex flex-wrap gap-2">
+                        <CreatorTab
+                          label="All"
+                          count={sources.data.length}
+                          active={shownCreator === "all"}
+                          onClick={() => setActiveCreator("all")}
+                        />
+                        {creators.map((creator) => (
+                          <CreatorTab
+                            key={creator.key}
+                            label={creator.label}
+                            count={creator.count}
+                            active={shownCreator === creator.key}
+                            onClick={() => setActiveCreator(creator.key)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    <div
+                      key={shownCreator}
+                      className="max-h-[28rem] overflow-y-auto rounded-2xl border bg-card"
+                    >
+                      {librarySources.map((source, index) => (
                       <div
                         key={source.id}
                         className={`flex items-center gap-3 p-4 ${index ? "border-t" : ""}`}
@@ -295,8 +345,9 @@ export function SourcesPage() {
                           </AlertDialog>
                         )}
                       </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  </>
                 ) : (
                   <div className="rounded-2xl border border-dashed p-8 text-center">
                     <Library className="mx-auto size-8 text-muted-foreground" />
@@ -453,6 +504,48 @@ export function SourcesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Stable per-creator grouping key: prefer the handle, fall back to author.
+ * Namespaced with a reserved prefix so free-text values can never collide with
+ * control sentinels like "all".
+ */
+function creatorKey(source: {
+  creatorHandle: string | null;
+  author: string | null;
+}) {
+  if (source.creatorHandle !== null) return `creator:${source.creatorHandle}`;
+  if (source.author !== null) return `creator:${source.author}`;
+  return "unknown";
+}
+
+function CreatorTab({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${
+        active
+          ? "border-transparent bg-primary/10 text-primary"
+          : "border-border bg-card text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      {label}
+      <span className="text-xs opacity-60">{count}</span>
+    </button>
   );
 }
 
