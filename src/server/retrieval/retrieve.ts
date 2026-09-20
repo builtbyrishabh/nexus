@@ -2,6 +2,7 @@ import { sql, type SQL } from "drizzle-orm";
 
 import { db } from "~/server/db";
 import { chunk, source, userSource } from "~/server/db/schema";
+import { PUBLIC_CREATOR_HANDLE } from "~/server/domain/source-access";
 import type { Evidence } from "~/server/domain/types";
 import { embedQuery } from "~/server/ingest/embed";
 import {
@@ -51,7 +52,11 @@ async function denseSearch(
     LEFT JOIN ${userSource} us
       ON us.source_id = c.source_id AND us.user_id = ${userId}
     JOIN ${source} s ON s.id = c.source_id
-    WHERE (us.user_id IS NOT NULL OR s.user_id = ${userId})
+    WHERE (
+      us.user_id IS NOT NULL
+      OR s.user_id = ${userId}
+      OR s.creator_handle = ${PUBLIC_CREATOR_HANDLE}
+    )
       ${creatorHandle ? sql`AND s.creator_handle = ${creatorHandle}` : sql``}
     ORDER BY c.embedding <=> ${qvec}::vector
     LIMIT ${CANDIDATE_K}
@@ -78,7 +83,11 @@ async function sparseSearch(
     JOIN ${source} s ON s.id = c.source_id
     CROSS JOIN websearch_to_tsquery('english', ${query}) AS q
     WHERE c.tsv @@ q
-      AND (us.user_id IS NOT NULL OR s.user_id = ${userId})
+      AND (
+        us.user_id IS NOT NULL
+        OR s.user_id = ${userId}
+        OR s.creator_handle = ${PUBLIC_CREATOR_HANDLE}
+      )
       ${creatorHandle ? sql`AND s.creator_handle = ${creatorHandle}` : sql``}
     ORDER BY ts_rank_cd(c.tsv, q) DESC
     LIMIT ${CANDIDATE_K}
