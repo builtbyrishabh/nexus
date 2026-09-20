@@ -283,7 +283,10 @@ export function SourcesPage() {
                         ))}
                       </div>
                     )}
-                    <div className="max-h-[28rem] overflow-y-auto rounded-2xl border bg-card">
+                    <div
+                      key={shownCreator}
+                      className="max-h-[28rem] overflow-y-auto rounded-2xl border bg-card"
+                    >
                       {librarySources.map((source, index) => (
                       <div
                         key={source.id}
@@ -504,12 +507,18 @@ export function SourcesPage() {
   );
 }
 
-/** Stable per-creator grouping key: prefer the handle, fall back to author. */
+/**
+ * Stable per-creator grouping key: prefer the handle, fall back to author.
+ * Namespaced with a reserved prefix so free-text values can never collide with
+ * control sentinels like "all".
+ */
 function creatorKey(source: {
   creatorHandle: string | null;
   author: string | null;
 }) {
-  return source.creatorHandle ?? source.author ?? "youtube";
+  if (source.creatorHandle !== null) return `creator:${source.creatorHandle}`;
+  if (source.author !== null) return `creator:${source.author}`;
+  return "unknown";
 }
 
 function CreatorTab({
