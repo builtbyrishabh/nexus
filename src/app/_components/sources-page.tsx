@@ -249,6 +249,7 @@ export function SourcesPage() {
                           <p className="truncate text-sm font-medium">{source.title}</p>
                           <p className="mt-1 truncate text-xs text-muted-foreground">
                             {source.author ?? source.creatorHandle ?? "YouTube"}
+                            {source.isPublic ? " · Public library" : ""}
                           </p>
                         </div>
                         <Button asChild variant="ghost" size="icon-sm">
@@ -261,36 +262,38 @@ export function SourcesPage() {
                             <ExternalLink />
                           </a>
                         </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label={`Remove ${source.title}`}
-                            >
-                              <Trash2 />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Remove this source?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Nexus will stop using “{source.title}” in future answers.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Keep source</AlertDialogCancel>
-                              <AlertDialogAction
-                                variant="destructive"
-                                onClick={() =>
-                                  removeSource.mutate({ sourceId: source.id })
-                                }
+                        {!source.isPublic && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={`Remove ${source.title}`}
                               >
-                                Remove source
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                                <Trash2 />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Remove this source?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Nexus will stop using “{source.title}” in future answers.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Keep source</AlertDialogCancel>
+                                <AlertDialogAction
+                                  variant="destructive"
+                                  onClick={() =>
+                                    removeSource.mutate({ sourceId: source.id })
+                                  }
+                                >
+                                  Remove source
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
                       </div>
                     ))}
                   </div>

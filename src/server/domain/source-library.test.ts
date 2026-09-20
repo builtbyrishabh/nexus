@@ -90,6 +90,10 @@ describe("source library", () => {
     expect(new PgDialect().sqlToQuery(order.getSQL()).sql).toContain(
       '"Nexus_source"."created_at" desc',
     );
+    const access = mocks.query.where.mock.calls[0]?.[0];
+    const accessQuery = new PgDialect().sqlToQuery(access.getSQL());
+    expect(accessQuery.sql).toContain('"Nexus_source"."creator_handle" =');
+    expect(accessQuery.params).toContain("alexhormozi");
   });
 
   it("inserts each requested user and source membership", async () => {
@@ -173,6 +177,10 @@ describe("source library", () => {
     });
     expect(mocks.db.select).toHaveBeenCalledOnce();
     expect(mocks.query.where).toHaveBeenCalledOnce();
+    const access = mocks.query.where.mock.calls[0]?.[0];
+    const accessQuery = new PgDialect().sqlToQuery(access.getSQL());
+    expect(accessQuery.sql).toContain('"Nexus_source"."creator_handle" =');
+    expect(accessQuery.params).toContain("alexhormozi");
   });
 
   it("keeps source ownership separate from creator tagging", async () => {

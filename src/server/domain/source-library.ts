@@ -1,8 +1,9 @@
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "~/server/db";
 import { source, userSource } from "~/server/db/schema";
+import { PUBLIC_CREATOR_HANDLE } from "~/server/domain/source-access";
 
 export const allowedCreatorSchema = z.object({
   handle: z.string().min(1),
@@ -31,7 +32,7 @@ export async function attachSourceToUser(
     .onConflictDoNothing();
 }
 
-/** The user-facing source library, ordered for a recent-first management view. */
+/** The user-facing source library, including the shared catalog, newest first. */
 export async function listOwnedSources(userId: string) {
   return db
     .select({
@@ -42,13 +43,20 @@ export async function listOwnedSources(userId: string) {
       creatorHandle: source.creatorHandle,
       publishedAt: source.publishedAt,
       createdAt: source.createdAt,
+      isPublic: sql<boolean>`coalesce(${source.creatorHandle} = ${PUBLIC_CREATOR_HANDLE}, false)`,
     })
     .from(source)
     .leftJoin(
       userSource,
       and(eq(source.id, userSource.sourceId), eq(userSource.userId, userId)),
     )
-    .where(or(eq(userSource.userId, userId), eq(source.userId, userId)))
+    .where(
+      or(
+        eq(userSource.userId, userId),
+        eq(source.userId, userId),
+        eq(source.creatorHandle, PUBLIC_CREATOR_HANDLE),
+      ),
+    )
     .orderBy(desc(source.createdAt));
 }
 
@@ -165,7 +173,7 @@ export async function listLibraryCreators(userId: string) {
   return groupLibrarySources(await listOwnedSources(userId));
 }
 
-/** Load the searchable-library facts derived from this user's source memberships. */
+/** Load the searchable-library facts available to this user. */
 export async function loadSourceLibrary(
   userId: string,
 ): Promise<Pick<NexusRequestContext, "hasSources" | "allowedCreators">> {
@@ -179,7 +187,13 @@ export async function loadSourceLibrary(
       userSource,
       and(eq(source.id, userSource.sourceId), eq(userSource.userId, userId)),
     )
-    .where(or(eq(userSource.userId, userId), eq(source.userId, userId)));
+    .where(
+      or(
+        eq(userSource.userId, userId),
+        eq(source.userId, userId),
+        eq(source.creatorHandle, PUBLIC_CREATOR_HANDLE),
+      ),
+    );
 
   return {
     hasSources: rows.length > 0,

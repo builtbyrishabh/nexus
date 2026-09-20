@@ -43,6 +43,7 @@ describe("retrieval source-library scope", () => {
       expect(query.sql).toContain("s.creator_handle =");
       expect(query.params).toContain("user-1");
       expect(query.params).toContain("alex");
+      expect(query.params).toContain("alexhormozi");
     }
   });
 });
