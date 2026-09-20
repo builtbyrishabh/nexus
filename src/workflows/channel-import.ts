@@ -152,7 +152,26 @@ async function processImportVideo(item: ImportWorkItem): Promise<void> {
     )
     .returning({ jobId: channelImportItem.jobId });
 
-  if (!claimed) return;
+  if (!claimed) {
+    // A re-invoked step means the prior attempt never completed — completed steps are memoized,
+    // not replayed. If that dead attempt left the row mid-flight in `processing`, it can never
+    // be reclaimed here (the claim only matches `queued`), so strand it no longer: fail it so the
+    // retry path can pick it up. `maxRetries = 0` keeps us from silently re-paying transcription,
+    // so recovery is a deliberate user retry, never an automatic one.
+    await db
+      .update(channelImportItem)
+      .set({
+        status: "failed",
+        error: "Import was interrupted before it finished — retry to run it again.",
+      })
+      .where(
+        and(
+          eq(channelImportItem.id, item.id),
+          eq(channelImportItem.status, "processing"),
+        ),
+      );
+    return;
+  }
 
   const job = await db.query.channelImport.findFirst({
     where: eq(channelImport.id, claimed.jobId),
