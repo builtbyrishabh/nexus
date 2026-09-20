@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
     getThreadById: vi.fn(),
     listThreads: vi.fn(),
     recall: vi.fn(),
+    createThread: vi.fn(),
     updateThread: vi.fn(),
     deleteThread: vi.fn(),
   },
@@ -46,6 +47,16 @@ describe("chat threads", () => {
     await expect(assertThreadOwner("thread-1", "user-1")).rejects.toMatchObject<
       Partial<TRPCError>
     >({ code: "NOT_FOUND" });
+  });
+
+  it("creates a client-minted thread with a trimmed title", async () => {
+    await threads.createThread("thread-1", "user-1", "  Pricing basics  ");
+
+    expect(mocks.memory.createThread).toHaveBeenCalledWith({
+      threadId: "thread-1",
+      resourceId: "user-1",
+      title: "Pricing basics",
+    });
   });
 
   it("loads native AI SDK v7 messages through the shared memory instance", async () => {
