@@ -6,7 +6,8 @@ import { createUIMessageStreamResponse } from "ai";
 
 import { parseChatRequest } from "~/app/api/chat/request";
 import { CHAT_QUOTA_ERROR } from "~/lib/chat-limits";
-import { assertThreadOwner } from "~/server/chat/threads";
+import { deriveThreadTitle } from "~/lib/thread-title";
+import { assertThreadOwner, createThread } from "~/server/chat/threads";
 import {
   loadSourceLibrary,
   type NexusRequestContext,
@@ -26,8 +27,9 @@ export async function POST(req: Request) {
   if (!parsed.ok) return new Response(parsed.error, { status: 400 });
 
   const { message, threadId } = parsed.request;
+  let existingThread: Awaited<ReturnType<typeof assertThreadOwner>>;
   try {
-    await assertThreadOwner(threadId, userId);
+    existingThread = await assertThreadOwner(threadId, userId);
   } catch (error) {
     if (error instanceof TRPCError && error.code === "NOT_FOUND") {
       return new Response("Not found", { status: 404 });
@@ -37,6 +39,15 @@ export async function POST(req: Request) {
 
   if (!(await consumeDailyQuota(userId, "chat"))) {
     return new Response(CHAT_QUOTA_ERROR, { status: 429 });
+  }
+
+  // First turn of a new thread: persist a title from the question so the sidebar
+  // shows it durably instead of falling back to "New chat".
+  if (!existingThread) {
+    const question = message.parts
+      .map((part) => (part.type === "text" ? part.text : ""))
+      .join(" ");
+    await createThread(threadId, userId, deriveThreadTitle(question));
   }
 
   const library = await loadSourceLibrary(userId);

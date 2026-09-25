@@ -5,6 +5,7 @@ import { TRPCError } from "@trpc/server";
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   assertThreadOwner: vi.fn(),
+  createThread: vi.fn(),
   loadSourceLibrary: vi.fn(),
   handleChatStream: vi.fn(),
   createUIMessageStream: vi.fn(() => ({ legacy: true })),
@@ -30,6 +31,7 @@ vi.mock("~/server/mastra", () => ({
 }));
 vi.mock("~/server/chat/threads", () => ({
   assertThreadOwner: mocks.assertThreadOwner,
+  createThread: mocks.createThread,
 }));
 vi.mock("~/server/domain/source-library", () => ({
   loadSourceLibrary: mocks.loadSourceLibrary,
@@ -99,6 +101,28 @@ describe("POST /api/chat", () => {
     expect(mocks.createUIMessageStreamResponse).toHaveBeenCalledWith({
       stream: mocks.stream,
     });
+  });
+
+  it("seeds the new thread's title from the question on the first turn", async () => {
+    await POST(request());
+
+    expect(mocks.createThread).toHaveBeenCalledWith(
+      threadId,
+      "user-1",
+      "What did the creator say?",
+    );
+  });
+
+  it("does not re-title an existing thread", async () => {
+    mocks.assertThreadOwner.mockResolvedValue({
+      id: threadId,
+      resourceId: "user-1",
+    });
+
+    await POST(request());
+
+    expect(mocks.createThread).not.toHaveBeenCalled();
+    expect(mocks.handleChatStream).toHaveBeenCalled();
   });
 
   it("rejects unauthenticated requests before invoking the agent", async () => {
