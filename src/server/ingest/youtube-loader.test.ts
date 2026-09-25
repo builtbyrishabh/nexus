@@ -1,6 +1,4 @@
 import {
-  YoutubeTranscriptDisabledError,
-  YoutubeTranscriptNotAvailableError,
   YoutubeTranscriptTooManyRequestError,
   YoutubeTranscriptVideoUnavailableError,
 } from "youtube-transcript";
@@ -129,6 +127,8 @@ const ref = { kind: "youtube_video", externalId: "UF8uR6Z6KLc" } as const;
 function videoOf(durationSec: number | undefined) {
   mocks.getBasicInfo.mockResolvedValue({
     basic_info: { duration: durationSec },
+    playability_status: { status: "OK" },
+    captions: { caption_tracks: [] },
     download: mocks.download,
   });
   mocks.download.mockImplementation(async () => new Blob([new Uint8Array([1, 2, 3])]).stream());
@@ -138,6 +138,14 @@ describe("loadTranscript — captions first, STT only behind every guard", () =>
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.env.TRANSCRIBE_FALLBACK = false;
+    mocks.getBasicInfo.mockResolvedValue({
+      playability_status: { status: "OK" },
+      captions: {
+        caption_tracks: [
+          { language_code: "en", base_url: "https://www.youtube.com/api/timedtext" },
+        ],
+      },
+    });
     mocks.transcribe.mockResolvedValue({
       segments: [
         { text: "Hello", startSecond: 0, endSecond: 0.5 },
@@ -152,14 +160,16 @@ describe("loadTranscript — captions first, STT only behind every guard", () =>
       segments: [{ text: "hi", startSec: 0, endSec: 1 }],
       provenance: "captions",
     });
-    expect(mocks.getBasicInfo).not.toHaveBeenCalled();
+    expect(mocks.getBasicInfo).toHaveBeenCalledWith("UF8uR6Z6KLc", {
+      client: "VISIONOS",
+    });
     expect(mocks.transcribe).not.toHaveBeenCalled();
   });
 
-  it("no captions + flag off → fails naming the flag, before any Innertube call", async () => {
-    mocks.fetchTranscript.mockRejectedValue(new YoutubeTranscriptDisabledError("UF8uR6Z6KLc"));
+  it("no caption tracks + flag off → fails before audio download", async () => {
+    videoOf(60);
     await expect(youtubeLoader.loadTranscript(ref)).rejects.toThrow(/TRANSCRIBE_FALLBACK=true/);
-    expect(mocks.getBasicInfo).not.toHaveBeenCalled();
+    expect(mocks.download).not.toHaveBeenCalled();
     expect(mocks.transcribe).not.toHaveBeenCalled();
   });
 
@@ -173,13 +183,11 @@ describe("loadTranscript — captions first, STT only behind every guard", () =>
       mocks.fetchTranscript.mockRejectedValue(error);
       await expect(youtubeLoader.loadTranscript(ref)).rejects.toBe(error);
     }
-    expect(mocks.getBasicInfo).not.toHaveBeenCalled();
     expect(mocks.transcribe).not.toHaveBeenCalled();
   });
 
   it("over the cap → fails before a byte is downloaded", async () => {
     mocks.env.TRANSCRIBE_FALLBACK = true;
-    mocks.fetchTranscript.mockRejectedValue(new YoutubeTranscriptDisabledError("UF8uR6Z6KLc"));
     videoOf(200 * 60);
     await expect(youtubeLoader.loadTranscript(ref)).rejects.toThrow(/over the 180 min STT cap/);
     expect(mocks.download).not.toHaveBeenCalled();
@@ -188,7 +196,6 @@ describe("loadTranscript — captions first, STT only behind every guard", () =>
 
   it("flag on + genuinely no captions → exactly one transcribe() call, stt provenance", async () => {
     mocks.env.TRANSCRIBE_FALLBACK = true;
-    mocks.fetchTranscript.mockRejectedValue(new YoutubeTranscriptNotAvailableError("UF8uR6Z6KLc"));
     videoOf(5 * 60);
     const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
@@ -204,12 +211,10 @@ describe("loadTranscript — captions first, STT only behind every guard", () =>
     stderr.mockRestore();
   });
 
-  it("captions that exist but are empty count as no captions", async () => {
+  it("an empty caption track fails without starting paid transcription", async () => {
     mocks.env.TRANSCRIBE_FALLBACK = true;
     mocks.fetchTranscript.mockResolvedValue([]);
-    videoOf(60);
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    await expect(youtubeLoader.loadTranscript(ref)).resolves.toMatchObject({ provenance: "stt" });
-    expect(mocks.transcribe).toHaveBeenCalledTimes(1);
+    await expect(youtubeLoader.loadTranscript(ref)).rejects.toThrow(/caption track returned no text/);
+    expect(mocks.transcribe).not.toHaveBeenCalled();
   });
 });

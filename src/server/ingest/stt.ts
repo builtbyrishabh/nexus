@@ -1,19 +1,13 @@
 import { createAssemblyAI } from "@ai-sdk/assemblyai";
 import { transcribe } from "ai";
-import {
-  YoutubeTranscriptDisabledError,
-  YoutubeTranscriptNotAvailableError,
-  YoutubeTranscriptNotAvailableLanguageError,
-} from "youtube-transcript";
 
 import { env } from "~/env";
 import type { Segment, SttProvider } from "~/server/domain/types";
 
 /**
  * Speech-to-text for caption-less videos. This file is the whole provider choice: swapping
- * AssemblyAI for another `transcribe()` provider touches nothing else. The decisions that
- * guard the bill (which caption failures may trigger a paid call, how long a video may be)
- * live here as pure functions so they are tested without any network.
+ * AssemblyAI for another `transcribe()` provider touches nothing else. The duration guard
+ * lives here as a pure function so it is tested without any network.
  */
 
 export const STT_PROVIDER: SttProvider = "assemblyai";
@@ -26,20 +20,6 @@ const STT_MODEL = "universal-3-5-pro";
  * silently drop ordinary uploads.
  */
 export const MAX_STT_MINUTES = 180;
-
-/**
- * The fallback trigger. Only "these captions genuinely do not exist" may lead to a paid
- * transcription: disabled by the owner, no track at all, or no track in a language we can use.
- * Everything else — rate limit, private/removed video, network — rethrows so the video is
- * `failed` and a throttle can never fan out into paid calls. Rerunning is the retry.
- */
-export function isNoCaptions(error: unknown): boolean {
-  return (
-    error instanceof YoutubeTranscriptDisabledError ||
-    error instanceof YoutubeTranscriptNotAvailableError ||
-    error instanceof YoutubeTranscriptNotAvailableLanguageError
-  );
-}
 
 export function assertWithinCap(videoId: string, durationSec: number | undefined): void {
   if (durationSec === undefined) return;

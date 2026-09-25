@@ -12,7 +12,6 @@ import type {
 } from "~/server/domain/types";
 import {
   assertWithinCap,
-  isNoCaptions,
   STT_PROVIDER,
   transcribeAudio,
 } from "~/server/ingest/stt";
@@ -104,26 +103,37 @@ async function fetchMeta(
   }
 }
 
-/**
- * Fetch the captions, preferring English. YouTube exposes many caption tracks (including
- * auto-translations), and the library's default can land on a non-English one — so we ask
- * for English first and fall back to whatever the default track is if English is unavailable.
- *
- * Returns `undefined` only when captions genuinely do not exist (the STT trigger). Any other
- * failure — rate limit, private/removed, network — rethrows: that video is `failed`, and a
- * throttle can never turn into a paid transcription.
- */
+/** Only a playable video with no caption tracks may use paid speech-to-text. */
 async function fetchCaptions(videoId: string): Promise<Segment[] | undefined> {
-  try {
-    const entries = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" }).catch(
-      () => YoutubeTranscript.fetchTranscript(videoId),
+  const info = await (await getInnertube()).getBasicInfo(videoId, { client: AUDIO_CLIENT });
+  const playability = info.playability_status;
+  if (playability?.status !== "OK") {
+    throw new Error(
+      `${videoId}: YouTube player returned ${playability?.status ?? "UNKNOWN"}${playability?.reason ? ` (${playability.reason})` : ""}`,
     );
-    const segments = toSeconds(entries);
-    return segments.length > 0 ? segments : undefined;
+  }
+  const tracks = info.captions?.caption_tracks;
+  const track = tracks?.find((item) => item.language_code === "en") ?? tracks?.[0];
+  if (!track) return undefined;
+
+  let httpFailure: string | undefined;
+  const transcriptFetch: typeof fetch = async (input, init) => {
+    const response = await fetch(input, init);
+    if (!response.ok) httpFailure = `HTTP ${response.status} at ${new URL(String(input)).pathname}`;
+    return response;
+  };
+  let entries: TranscriptEntry[];
+  try {
+    entries = await YoutubeTranscript.fetchTranscript(videoId, {
+      lang: track.language_code,
+      fetch: transcriptFetch,
+    });
   } catch (error) {
-    if (isNoCaptions(error)) return undefined;
+    if (httpFailure) throw new Error(`${videoId}: caption retrieval returned ${httpFailure}`, { cause: error });
     throw error;
   }
+  if (entries.length === 0) throw new Error(`${videoId}: caption track returned no text`);
+  return toSeconds(entries);
 }
 
 /**
