@@ -79,7 +79,7 @@ describe("channel import launch", () => {
       channelId: "UC123",
       creatorHandle: "creator",
       displayName: "Creator Name",
-      importLimit: 50,
+      importLimit: 3,
     });
     expect(mocks.discover).toHaveBeenCalledWith("@Creator", 1);
     expect(mocks.start).not.toHaveBeenCalled();

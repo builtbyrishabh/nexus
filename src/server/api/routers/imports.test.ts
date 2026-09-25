@@ -52,7 +52,7 @@ describe("imports router ownership boundary", () => {
       channelId: "UC123",
       creatorHandle: "creator",
       displayName: "Creator",
-      importLimit: 50,
+      importLimit: 3,
     });
 
     await expect(caller("user-a").preview({ scope: " @creator " })).resolves.toMatchObject({
