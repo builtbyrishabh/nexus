@@ -117,8 +117,7 @@ async function fetchCaptions(videoId: string): Promise<Segment[] | undefined> {
     );
   }
   const tracks = info.captions?.caption_tracks;
-  const track = tracks?.find((item) => item.language_code === "en") ?? tracks?.[0];
-  if (!track) return undefined;
+  if (!tracks?.length) return undefined;
 
   let httpFailure: string | undefined;
   const transcriptFetch: typeof fetch = async (input, init) => {
@@ -128,10 +127,8 @@ async function fetchCaptions(videoId: string): Promise<Segment[] | undefined> {
   };
   let entries: TranscriptEntry[];
   try {
-    entries = await YoutubeTranscript.fetchTranscript(videoId, {
-      lang: track.language_code,
-      fetch: transcriptFetch,
-    });
+    // The library performs its own player lookup, so let it select from that lookup.
+    entries = await YoutubeTranscript.fetchTranscript(videoId, { fetch: transcriptFetch });
   } catch (error) {
     if (httpFailure) throw new Error(`${videoId}: caption retrieval returned ${httpFailure}`, { cause: error });
     throw error;
