@@ -6,7 +6,7 @@ import type {
 export type ImportJobStatus = ChannelImport["status"];
 export type ImportItemStatus = ChannelImportItem["status"];
 
-export const CHANNEL_IMPORT_LIMIT = 50;
+export const CHANNEL_IMPORT_LIMIT = 3;
 
 export type ImportSummary = {
   discovered: number;

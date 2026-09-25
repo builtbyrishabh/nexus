@@ -1,5 +1,6 @@
 import pMap from "p-map";
 
+import { env } from "~/env";
 import type { ChannelScope, SourceLoader, SourceRef } from "~/server/domain/types";
 import type { IngestResult } from "~/server/ingest/pipeline";
 
@@ -27,7 +28,7 @@ export async function ingestChannel(
         return { status: "failed", ref, error };
       }
     },
-    { concurrency: IN_FLIGHT },
+    { concurrency: env.SUPADATA_API_KEY ? 1 : IN_FLIGHT },
   );
 }
 

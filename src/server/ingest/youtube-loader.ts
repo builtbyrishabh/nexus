@@ -12,10 +12,10 @@ import type {
 } from "~/server/domain/types";
 import {
   assertWithinCap,
-  isNoCaptions,
   STT_PROVIDER,
   transcribeAudio,
 } from "~/server/ingest/stt";
+import { fetchSupadataCaptions } from "~/server/ingest/supadata";
 
 type OEmbed = { title?: string; author_name?: string };
 
@@ -104,26 +104,38 @@ async function fetchMeta(
   }
 }
 
-/**
- * Fetch the captions, preferring English. YouTube exposes many caption tracks (including
- * auto-translations), and the library's default can land on a non-English one — so we ask
- * for English first and fall back to whatever the default track is if English is unavailable.
- *
- * Returns `undefined` only when captions genuinely do not exist (the STT trigger). Any other
- * failure — rate limit, private/removed, network — rethrows: that video is `failed`, and a
- * throttle can never turn into a paid transcription.
- */
+/** Only a playable video with no caption tracks may use paid speech-to-text. */
 async function fetchCaptions(videoId: string): Promise<Segment[] | undefined> {
-  try {
-    const entries = await YoutubeTranscript.fetchTranscript(videoId, { lang: "en" }).catch(
-      () => YoutubeTranscript.fetchTranscript(videoId),
+  if (env.SUPADATA_API_KEY) {
+    return fetchSupadataCaptions(videoId, env.SUPADATA_API_KEY);
+  }
+  const info = await (await getInnertube()).getBasicInfo(videoId, { client: AUDIO_CLIENT });
+  const playability = info.playability_status;
+  if (playability?.status !== "OK") {
+    throw new Error(
+      `${videoId}: YouTube player returned ${playability?.status ?? "UNKNOWN"}${playability?.reason ? ` (${playability.reason})` : ""}`,
     );
-    const segments = toSeconds(entries);
-    return segments.length > 0 ? segments : undefined;
+  }
+  const tracks = info.captions?.caption_tracks;
+  if (!tracks?.length) return undefined;
+
+  let httpFailure: string | undefined;
+  const transcriptFetch: typeof fetch = async (input, init) => {
+    const response = await fetch(input, init);
+    if (!response.ok) httpFailure = `HTTP ${response.status} at ${new URL(String(input)).pathname}`;
+    return response;
+  };
+  let entries: TranscriptEntry[];
+  try {
+    // The library performs its own player lookup, so let it select from that lookup.
+    entries = await YoutubeTranscript.fetchTranscript(videoId, { fetch: transcriptFetch });
   } catch (error) {
-    if (isNoCaptions(error)) return undefined;
+    if (httpFailure) throw new Error(`${videoId}: caption retrieval returned ${httpFailure}`, { cause: error });
     throw error;
   }
+  const nonblank = entries.filter((entry) => entry.text.trim());
+  if (nonblank.length === 0) throw new Error(`${videoId}: caption track returned no text`);
+  return toSeconds(nonblank);
 }
 
 /**
@@ -291,7 +303,7 @@ export async function discoverYoutubeChannel(
   };
 }
 
-/** SourceLoader for YouTube: discovery via Innertube, captions via youtube-transcript. */
+/** SourceLoader for YouTube: discovery via Innertube, captions via Supadata when configured. */
 export const youtubeLoader: SourceLoader = {
   async *discover(scope, { limit } = {}) {
     const { channel } = await loadChannel(scope);
@@ -301,7 +313,11 @@ export const youtubeLoader: SourceLoader = {
   async loadTranscript(ref): Promise<Transcript> {
     const videoId = toVideoId(ref.externalId);
     const segments = await fetchCaptions(videoId);
-    return segments ? { segments, provenance: "captions" } : sttTranscript(videoId);
+    if (segments) return { segments, provenance: "captions" };
+    if (env.SUPADATA_API_KEY) {
+      throw new Error(`${videoId}: Supadata found no native captions; AI transcription is not enabled`);
+    }
+    return sttTranscript(videoId);
   },
 
   async loadMeta(ref): Promise<SourceMeta> {

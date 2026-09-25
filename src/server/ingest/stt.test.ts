@@ -1,30 +1,6 @@
-import {
-  YoutubeTranscriptDisabledError,
-  YoutubeTranscriptError,
-  YoutubeTranscriptNotAvailableError,
-  YoutubeTranscriptNotAvailableLanguageError,
-  YoutubeTranscriptTooManyRequestError,
-  YoutubeTranscriptVideoUnavailableError,
-} from "youtube-transcript";
 import { describe, expect, it } from "vitest";
 
-import { assertWithinCap, isNoCaptions, MAX_STT_MINUTES, toSegments } from "~/server/ingest/stt";
-
-describe("STT trigger — only genuine no-captions may lead to a paid call", () => {
-  it("fires on disabled / no track / no usable language", () => {
-    expect(isNoCaptions(new YoutubeTranscriptDisabledError("v"))).toBe(true);
-    expect(isNoCaptions(new YoutubeTranscriptNotAvailableError("v"))).toBe(true);
-    expect(isNoCaptions(new YoutubeTranscriptNotAvailableLanguageError("en", ["hi"], "v"))).toBe(true);
-  });
-
-  it("never fires on throttle, private/removed, or anything unknown", () => {
-    expect(isNoCaptions(new YoutubeTranscriptTooManyRequestError())).toBe(false);
-    expect(isNoCaptions(new YoutubeTranscriptVideoUnavailableError("v"))).toBe(false);
-    expect(isNoCaptions(new YoutubeTranscriptError("boom"))).toBe(false);
-    expect(isNoCaptions(new TypeError("fetch failed"))).toBe(false);
-    expect(isNoCaptions(undefined)).toBe(false);
-  });
-});
+import { assertWithinCap, MAX_STT_MINUTES, toSegments } from "~/server/ingest/stt";
 
 describe("STT duration cap", () => {
   it("rejects a known duration over the cap, names the cap", () => {

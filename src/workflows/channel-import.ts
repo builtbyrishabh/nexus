@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { createHook, FatalError } from "workflow";
 
+import { env } from "~/env";
 import { db } from "~/server/db";
 import {
   channelImport,
@@ -32,9 +33,10 @@ export async function settleImportItems(
   items: ImportWorkItem[],
   steps: ImportItemSteps,
 ): Promise<void> {
-  for (let index = 0; index < items.length; index += IN_FLIGHT) {
+  const batchSize = env.SUPADATA_API_KEY ? 1 : IN_FLIGHT;
+  for (let index = 0; index < items.length; index += batchSize) {
     const results = await Promise.allSettled(
-      items.slice(index, index + IN_FLIGHT).map(async (item) => {
+      items.slice(index, index + batchSize).map(async (item) => {
         try {
           await steps.process(item);
         } catch (error) {
