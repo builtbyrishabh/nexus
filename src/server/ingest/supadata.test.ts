@@ -44,7 +44,7 @@ describe("Supadata native captions", () => {
 
   it("retries a rate limit and then returns captions", async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(null, { status: 429, headers: { "retry-after": "0" } }))
+      .mockResolvedValueOnce(new Response(null, { status: 429, headers: { "retry-after": "0.001" } }))
       .mockResolvedValueOnce(Response.json({ content: [
         { text: "Recovered", offset: 0, duration: 1000 },
       ] }));
@@ -53,5 +53,61 @@ describe("Supadata native captions", () => {
       { text: "Recovered", startSec: 0, endSec: 1 },
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses an abort deadline and retries a temporary server failure", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 503, headers: { "retry-after": "0.001" } }))
+      .mockResolvedValueOnce(Response.json({ content: [
+        { text: "Available", offset: 1000, duration: 1000 },
+      ] }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(fetchSupadataCaptions("5e37ZT3SQbk", "secret")).resolves.toEqual([
+      { text: "Available", startSec: 1, endSec: 2 },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]![1].signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("retries a transient network failure without repeating authentication errors", async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(Response.json({ content: [
+        { text: "Recovered", offset: 0, duration: 1000 },
+      ] }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(fetchSupadataCaptions("5e37ZT3SQbk", "secret")).resolves.toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("polls an asynchronous native transcript job without resubmitting it", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ jobId: "job-1" }, { status: 202 }))
+      .mockResolvedValueOnce(Response.json({ status: "queued" }))
+      .mockResolvedValueOnce(Response.json({ status: "completed", content: [
+        { text: "Later", offset: 2000, duration: 500 },
+      ] }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(fetchSupadataCaptions("5e37ZT3SQbk", "secret")).resolves.toEqual([
+      { text: "Later", startSec: 2, endSec: 2.5 },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(String(fetchMock.mock.calls[1]![0])).toBe("https://api.supadata.ai/v1/transcript/job-1");
+    expect(String(fetchMock.mock.calls[2]![0])).toBe("https://api.supadata.ai/v1/transcript/job-1");
+  });
+
+  it("stops a stalled request at the shared deadline", async () => {
+    const controller = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+    vi.stubGlobal("fetch", vi.fn((_url: URL, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+    })));
+    try {
+      const pending = fetchSupadataCaptions("5e37ZT3SQbk", "secret");
+      controller.abort(new DOMException("deadline", "TimeoutError"));
+      await expect(pending).rejects.toThrow(/Supadata request timed out/);
+    } finally {
+      timeout.mockRestore();
+    }
   });
 });
