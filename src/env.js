@@ -55,6 +55,8 @@ export const env = createEnv({
     TRANSCRIBE_FALLBACK: booleanFlag("false"),
     /** AssemblyAI key, direct — the AI Gateway does not route transcription. */
     ASSEMBLYAI_API_KEY: z.string().optional(),
+    /** Hosted native YouTube captions for serverless imports. */
+    SUPADATA_API_KEY: z.string().optional(),
     /**
      * Clerk secret key. Optional at build/typecheck time so a fresh checkout without Clerk
      * keys still builds and tests; the authed web app cannot actually run without it. Clerk's
@@ -89,6 +91,7 @@ export const env = createEnv({
     EVAL_USER_ID: process.env.EVAL_USER_ID,
     TRANSCRIBE_FALLBACK: process.env.TRANSCRIBE_FALLBACK,
     ASSEMBLYAI_API_KEY: process.env.ASSEMBLYAI_API_KEY,
+    SUPADATA_API_KEY: process.env.SUPADATA_API_KEY,
     CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY,
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,

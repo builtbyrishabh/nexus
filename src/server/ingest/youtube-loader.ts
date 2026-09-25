@@ -15,6 +15,7 @@ import {
   STT_PROVIDER,
   transcribeAudio,
 } from "~/server/ingest/stt";
+import { fetchSupadataCaptions } from "~/server/ingest/supadata";
 
 type OEmbed = { title?: string; author_name?: string };
 
@@ -105,6 +106,9 @@ async function fetchMeta(
 
 /** Only a playable video with no caption tracks may use paid speech-to-text. */
 async function fetchCaptions(videoId: string): Promise<Segment[] | undefined> {
+  if (env.SUPADATA_API_KEY) {
+    return fetchSupadataCaptions(videoId, env.SUPADATA_API_KEY);
+  }
   const info = await (await getInnertube()).getBasicInfo(videoId, { client: AUDIO_CLIENT });
   const playability = info.playability_status;
   if (playability?.status !== "OK") {
@@ -132,8 +136,9 @@ async function fetchCaptions(videoId: string): Promise<Segment[] | undefined> {
     if (httpFailure) throw new Error(`${videoId}: caption retrieval returned ${httpFailure}`, { cause: error });
     throw error;
   }
-  if (entries.length === 0) throw new Error(`${videoId}: caption track returned no text`);
-  return toSeconds(entries);
+  const nonblank = entries.filter((entry) => entry.text.trim());
+  if (nonblank.length === 0) throw new Error(`${videoId}: caption track returned no text`);
+  return toSeconds(nonblank);
 }
 
 /**
@@ -301,7 +306,7 @@ export async function discoverYoutubeChannel(
   };
 }
 
-/** SourceLoader for YouTube: discovery via Innertube, captions via youtube-transcript. */
+/** SourceLoader for YouTube: discovery via Innertube, captions via Supadata when configured. */
 export const youtubeLoader: SourceLoader = {
   async *discover(scope, { limit } = {}) {
     const { channel } = await loadChannel(scope);
@@ -311,7 +316,11 @@ export const youtubeLoader: SourceLoader = {
   async loadTranscript(ref): Promise<Transcript> {
     const videoId = toVideoId(ref.externalId);
     const segments = await fetchCaptions(videoId);
-    return segments ? { segments, provenance: "captions" } : sttTranscript(videoId);
+    if (segments) return { segments, provenance: "captions" };
+    if (env.SUPADATA_API_KEY) {
+      throw new Error(`${videoId}: Supadata found no native captions; AI transcription is not enabled`);
+    }
+    return sttTranscript(videoId);
   },
 
   async loadMeta(ref): Promise<SourceMeta> {

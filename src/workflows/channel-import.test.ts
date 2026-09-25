@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
+const mockEnv = vi.hoisted(() => ({ SUPADATA_API_KEY: undefined as string | undefined }));
+vi.mock("~/env", () => ({ env: mockEnv }));
+
 const workflow = vi.hoisted(() => {
   const dispose = vi.fn();
   const getConflict = vi.fn();
@@ -57,6 +60,26 @@ describe("channel import orchestration", () => {
     });
 
     expect(peak).toBe(IN_FLIGHT);
+  });
+
+  it("processes one video at a time with Supadata's rate limit", async () => {
+    mockEnv.SUPADATA_API_KEY = "test-key";
+    let running = 0;
+    let peak = 0;
+    try {
+      await settleImportItems(items(4), {
+        process: async () => {
+          running++;
+          peak = Math.max(peak, running);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          running--;
+        },
+        fail: vi.fn(),
+      });
+      expect(peak).toBe(1);
+    } finally {
+      mockEnv.SUPADATA_API_KEY = undefined;
+    }
   });
 
   it("records one failure and continues later batches", async () => {

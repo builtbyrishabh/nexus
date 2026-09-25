@@ -104,7 +104,7 @@ describe("toSeconds — unit normalization at the boundary", () => {
 // ---------------------------------------------------------------------------------------------
 
 const mocks = vi.hoisted(() => ({
-  env: { TRANSCRIBE_FALLBACK: false, ASSEMBLYAI_API_KEY: "test-key" },
+  env: { TRANSCRIBE_FALLBACK: false, ASSEMBLYAI_API_KEY: "test-key", SUPADATA_API_KEY: undefined as string | undefined },
   fetchTranscript: vi.fn(),
   getBasicInfo: vi.fn(),
   download: vi.fn(),
@@ -138,6 +138,7 @@ describe("loadTranscript — captions first, STT only behind every guard", () =>
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.env.TRANSCRIBE_FALLBACK = false;
+    mocks.env.SUPADATA_API_KEY = undefined;
     mocks.getBasicInfo.mockResolvedValue({
       playability_status: { status: "OK" },
       captions: {
@@ -216,5 +217,34 @@ describe("loadTranscript — captions first, STT only behind every guard", () =>
     mocks.fetchTranscript.mockResolvedValue([]);
     await expect(youtubeLoader.loadTranscript(ref)).rejects.toThrow(/caption track returned no text/);
     expect(mocks.transcribe).not.toHaveBeenCalled();
+  });
+
+  it("a whitespace-only caption track also fails", async () => {
+    mocks.fetchTranscript.mockResolvedValue([{ text: " ", offset: 0, duration: 1000 }]);
+    await expect(youtubeLoader.loadTranscript(ref)).rejects.toThrow(/caption track returned no text/);
+  });
+
+  it("uses Supadata without requesting the blocked YouTube player", async () => {
+    mocks.env.SUPADATA_API_KEY = "test-key";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({
+      content: [{ text: "Real caption", offset: 12500, duration: 2500 }],
+    }));
+    await expect(youtubeLoader.loadTranscript(ref)).resolves.toEqual({
+      provenance: "captions",
+      segments: [{ text: "Real caption", startSec: 12.5, endSec: 15 }],
+    });
+    expect(mocks.getBasicInfo).not.toHaveBeenCalled();
+    expect(mocks.transcribe).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("reports missing Supadata captions without trying AssemblyAI", async () => {
+    mocks.env.SUPADATA_API_KEY = "test-key";
+    mocks.env.TRANSCRIBE_FALLBACK = true;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}, { status: 206 }));
+    await expect(youtubeLoader.loadTranscript(ref)).rejects.toThrow(/no native captions/);
+    expect(mocks.getBasicInfo).not.toHaveBeenCalled();
+    expect(mocks.transcribe).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 });

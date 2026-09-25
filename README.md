@@ -110,6 +110,12 @@ library unless ownership is assigned separately. Use the Sources page for the no
 AssemblyAI transcription is an opt-in fallback for videos without captions. Set
 `TRANSCRIBE_FALLBACK=true` only when you intend to use it.
 
+For hosted imports, set `SUPADATA_API_KEY` on the server. Nexus requests existing
+timestamped captions with Supadata's `mode=native` (one API credit per video);
+it does not request Supadata AI transcription. Without a key, local runs fetch
+captions directly from YouTube. Keep `TRANSCRIBE_FALLBACK=false` on Vercel while
+YouTube blocks its audio downloads.
+
 ## Quality checks
 
 ```bash

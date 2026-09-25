@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const mockEnv = vi.hoisted(() => ({ SUPADATA_API_KEY: undefined as string | undefined }));
+vi.mock("~/env", () => ({ env: mockEnv }));
 
 import type { SourceLoader, SourceRef } from "~/server/domain/types";
 import { IN_FLIGHT, ingestChannel, summarize } from "~/server/ingest/channel";
@@ -61,6 +64,27 @@ describe("ingestChannel — per-video isolation, discovery order", () => {
       },
     });
     expect(peak).toBe(IN_FLIGHT);
+  });
+
+  it("runs one video at a time when Supadata is configured", async () => {
+    mockEnv.SUPADATA_API_KEY = "test-key";
+    let running = 0;
+    let peak = 0;
+    try {
+      await ingestChannel("@x", {
+        loader: loaderOf(["1", "2", "3"]),
+        ingest: async (r) => {
+          running++;
+          peak = Math.max(peak, running);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          running--;
+          return ingestedResult(r);
+        },
+      });
+      expect(peak).toBe(1);
+    } finally {
+      mockEnv.SUPADATA_API_KEY = undefined;
+    }
   });
 
   it("passes --limit through to discovery", async () => {
