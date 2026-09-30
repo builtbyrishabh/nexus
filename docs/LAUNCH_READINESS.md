@@ -6,8 +6,8 @@
   100 chat messages plus 3 import starts or retries per user per UTC day. Quota updates are atomic.
 - The Drizzle CLI loads `.env.local` and `.env`, local environment files are ignored, and the setup
   guide distinguishes user-owned Sources imports from unowned maintenance CLI ingestion.
-- CI typechecks, tests, and builds from a secretless configuration. The repository carries an MIT
-  license and patched direct or scoped transitive dependency versions for known production advisories.
+- CI typechecks, tests, and builds from a secretless configuration. Direct and scoped transitive
+  dependency versions are patched for known production advisories.
 
 ## Release-owner checks
 
