@@ -144,6 +144,10 @@ The key design rule is simple: use native library behavior for chat and own cust
 the product needs differentiated retrieval or verifiable citations. The full request path, data
 contracts, retrieval pipeline, and tradeoffs live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## License
+## Copyright
 
-[MIT](LICENSE) © 2026 Rishabh Singh
+© 2026 Rishabh Singh.
+
+No project-wide license is offered for this revision. Previously licensed copies
+retain the permissions granted under their original terms. Third-party components
+remain subject to their own licenses.
