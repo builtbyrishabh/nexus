@@ -61,15 +61,15 @@ export const storage = new PostgresStore({
 
 const model = gateway(env.GEN_MODEL);
 
-/** One native memory instance owns thread persistence, recall, and title generation. */
+// Titles are seeded deterministically from the first question when the thread is
+// created (see `createThread` in `~/server/chat/threads`), so we leave Mastra's
+// LLM `generateTitle` off — it costs a model call per thread and would overwrite
+// the question snippet the sidebar shows.
+/** One native memory instance owns thread persistence and recall. */
 export const nexusMemory = new Memory({
   storage,
   options: {
     lastMessages: 20,
-    generateTitle: {
-      model,
-      instructions: "Write a short, specific title for this conversation.",
-    },
   },
 });
 

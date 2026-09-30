@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ChatConversation } from "~/app/_components/chat-conversation";
 import { PromptBox } from "~/app/_components/prompt-box";
 import { firstCreatorName } from "~/app/_components/source-view";
+import { deriveThreadTitle } from "~/lib/thread-title";
 import { api } from "~/trpc/react";
 
 const newThreadId = () => crypto.randomUUID();
@@ -44,7 +45,7 @@ function ChatsHarness() {
     utils.chats.list.setData(undefined, (prev) => [
       {
         id: threadId,
-        title: text.length > 60 ? `${text.slice(0, 60).trimEnd()}…` : text,
+        title: deriveThreadTitle(text),
         createdAt: now,
         updatedAt: now,
       },

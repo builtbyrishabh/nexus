@@ -27,6 +27,19 @@ export async function listUserThreads(userId: string): Promise<ThreadSummary[]> 
   }));
 }
 
+/** Create a client-minted thread up front, its title seeded from the first question. */
+export async function createThread(
+  threadId: string,
+  userId: string,
+  title: string,
+) {
+  await nexusMemory.createThread({
+    threadId,
+    resourceId: userId,
+    title: title.trim(),
+  });
+}
+
 /** Reject an existing thread owned by another user; a new client-minted thread is allowed. */
 export async function assertThreadOwner(threadId: string, userId: string) {
   const thread = await nexusMemory.getThreadById({ threadId });
